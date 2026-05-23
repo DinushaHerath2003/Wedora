@@ -221,7 +221,7 @@ export default function CakeDecorationDashboard() {
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
             style={{
-              backgroundImage: 'url(/roombanner.png)',
+              backgroundImage: 'url(/cake.png)',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               height: '150px',

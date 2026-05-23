@@ -3,6 +3,35 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserRole, VENDOR_CATEGORIES } from '@/lib/constants';
+import { getVendorDashboardPath } from '@/lib/constants';
+import { apiFetch } from '@/lib/api';
+
+type UserSignupResponse = {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    name?: string;
+    organizationName?: string;
+    location?: string;
+    categories?: string[];
+  };
+};
+
+type VendorSignupResponse = {
+  accessToken: string;
+  id: number;
+  email: string;
+  role: string;
+  organizationName: string;
+  phone: string;
+  location: string;
+  categories: string[];
+  contactPerson?: string;
+  isActive: boolean;
+  createdAt: string;
+};
 
 export default function SignupPage() {
   const router = useRouter();
@@ -11,6 +40,7 @@ export default function SignupPage() {
   const [formData, setFormData] = useState({
     name: '',
     organizationName: '',
+    phone: '',
     email: '',
     password: '',
     location: '',
@@ -24,6 +54,7 @@ export default function SignupPage() {
     setFormData({
       name: '',
       organizationName: '',
+      phone: '',
       email: '',
       password: '',
       location: '',
@@ -59,8 +90,8 @@ export default function SignupPage() {
     }
 
     if (role === UserRole.VENDOR) {
-      if (!formData.organizationName || !formData.location) {
-        setErrors('Organization name and location are required for vendors');
+      if (!formData.organizationName || !formData.phone || !formData.location) {
+        setErrors('Organization name, phone, and location are required for vendors');
         return false;
       }
       if (selectedCategories.length === 0) {
@@ -88,49 +119,52 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      // Mock authentication - works without backend
-      const user = {
-        id: Date.now().toString(),
-        role,
-        email: formData.email,
-        ...(role === UserRole.USER && { name: formData.name }),
-        ...(role === UserRole.ADMIN && { name: formData.name }),
-        ...(role === UserRole.VENDOR && {
-          organizationName: formData.organizationName,
-          location: formData.location,
-          categories: selectedCategories,
-        }),
-      };
+      if (role === UserRole.VENDOR) {
+        const vendorResponse = await apiFetch<VendorSignupResponse>('/vendors/auth/signup', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            organizationName: formData.organizationName,
+            phone: formData.phone,
+            location: formData.location,
+            categories: selectedCategories,
+          }),
+        });
 
-      // Check if user already exists (mock validation)
-      const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-      if (existingUsers.some((u: any) => u.email === formData.email)) {
-        throw new Error('User with this email already exists');
-      }
+        localStorage.setItem('token', vendorResponse.accessToken);
+        localStorage.setItem(
+          'user',
+          JSON.stringify({
+            ...vendorResponse,
+            role: 'vendor',
+          })
+        );
+        router.push(getVendorDashboardPath(vendorResponse.categories));
+      } else {
+        const userResponse = await apiFetch<UserSignupResponse>('/auth/signup', {
+          method: 'POST',
+          body: JSON.stringify({
+            role,
+            email: formData.email,
+            password: formData.password,
+            name: formData.name,
+          }),
+        });
 
-      // Store user in mock database
-      existingUsers.push({ ...user, password: formData.password });
-      localStorage.setItem('users', JSON.stringify(existingUsers));
+        localStorage.setItem('token', userResponse.token);
+        localStorage.setItem('user', JSON.stringify(userResponse.user));
 
-      // Store token and user info
-      const token = btoa(`${user.id}:${Date.now()}`);
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Navigate to appropriate dashboard
-      switch (role) {
-        case UserRole.USER:
-          router.push('/dashboard/user');
-          break;
-        case UserRole.VENDOR:
-          router.push('/dashboard/vendor');
-          break;
-        case UserRole.ADMIN:
-          router.push('/dashboard/admin');
-          break;
+        switch (userResponse.user.role) {
+          case 'user':
+            router.push('/dashboard/user');
+            break;
+          case 'admin':
+            router.push('/dashboard/admin');
+            break;
+          default:
+            router.push('/');
+        }
       }
     } catch (error) {
       setErrors(error instanceof Error ? error.message : 'An error occurred during signup');
@@ -143,12 +177,12 @@ export default function SignupPage() {
     <div 
       className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8"
       style={{
-        backgroundImage: 'url(/5.jpg)',
+        backgroundImage: 'url(/cart.png)',
         backgroundSize: 'cover',
         backgroundPosition: 'center'
       }}
     >
-      <div className="max-w-md w-full space-y-8 p-10 rounded-xl shadow-2xl" style={{backgroundColor: 'rgba(255, 255, 255, 0.25)', backdropFilter: 'blur(10px)'}}>
+      <div className="max-w-md w-full space-y-8 p-10 rounded-xl shadow-2xl" style={{backgroundColor: 'rgba(255, 255, 255, 0.15)', backdropFilter: 'blur(10px)'}}>
         <div>
           <div className="flex justify-center mb-4">
             <img src="/logo.png" alt="Wedora Logo" className="h-20 w-20" />
@@ -255,6 +289,23 @@ export default function SignupPage() {
                       onChange={handleInputChange}
                       className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 bg-transparent text-white"
                       style={{borderColor: 'rgba(255, 255, 255, 0.5)', color: '#755A7B'}}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="phone" className="block text-sm font-medium text-white">
+                      Phone Number *
+                    </label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 bg-transparent text-white"
+                      style={{borderColor: 'rgba(255, 255, 255, 0.5)', color: '#755A7B'}}
+                      placeholder="+1-555-0123"
                       required
                     />
                   </div>

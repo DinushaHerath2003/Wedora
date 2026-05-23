@@ -2,7 +2,7 @@ import { Injectable, ConflictException, UnauthorizedException, BadRequestExcepti
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User } from '../entities/user.entity';
+import { User } from '../users/entities/user.entity';
 import { SignupDto, LoginDto } from './dto/auth.dto';
 import { UserRole } from '../common/constants';
 

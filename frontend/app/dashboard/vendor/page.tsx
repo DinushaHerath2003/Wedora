@@ -5,13 +5,43 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { VENDOR_CATEGORIES } from '@/lib/constants';
 import { FaUser, FaUpload } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
+
+interface VendorRecord {
+  id: number;
+  email: string;
+  organizationName: string;
+  location: string;
+  categories: string[];
+}
+
+interface Offering {
+  id: number;
+  name: string;
+  category: string;
+  price: string | number;
+}
+
+interface Booking {
+  id: number;
+  eventDate: string;
+  status: string;
+}
+
+interface Review {
+  id: number;
+  rating: number;
+  comment?: string;
+}
 
 interface VendorUser {
+  id?: number;
   organizationName: string;
   email: string;
   role: string;
   location: string;
   categories: string[];
+  accessToken?: string;
 }
 
 export default function VendorDashboard() {
@@ -19,6 +49,8 @@ export default function VendorDashboard() {
   const [user, setUser] = useState<VendorUser | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
+  const [stats, setStats] = useState({ offerings: 0, bookings: 0, reviews: 0 });
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -36,7 +68,37 @@ export default function VendorDashboard() {
     }
 
     setUser(userData);
-    
+
+    const loadVendorData = async () => {
+      try {
+        const vendors = await apiFetch<VendorRecord[]>('/vendors');
+        const currentVendor = vendors.find((vendor) => vendor.email === userData.email);
+
+        if (!currentVendor) {
+          setStats({ offerings: 0, bookings: 0, reviews: 0 });
+          return;
+        }
+
+        const [offerings, bookings, reviews] = await Promise.all([
+          apiFetch<Offering[]>(`/offerings?vendorId=${currentVendor.id}`),
+          apiFetch<Booking[]>(`/bookings?vendorId=${currentVendor.id}`),
+          apiFetch<Review[]>(`/reviews?vendorId=${currentVendor.id}`),
+        ]);
+
+        setStats({
+          offerings: offerings.length,
+          bookings: bookings.length,
+          reviews: reviews.length,
+        });
+      } catch {
+        setStats({ offerings: 0, bookings: 0, reviews: 0 });
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    loadVendorData();
+
     // Load profile image from localStorage
     const savedProfileImage = localStorage.getItem('vendorProfileImage');
     if (savedProfileImage) {
@@ -182,7 +244,9 @@ export default function VendorDashboard() {
                 </div>
                 <div className="ml-5">
                   <h3 className="text-lg font-medium text-gray-900">Manage Services</h3>
-                  <p className="mt-1 text-sm text-gray-500">Add and update your offerings</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {loadingData ? 'Loading offerings...' : `${stats.offerings} live offerings from backend`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -199,7 +263,9 @@ export default function VendorDashboard() {
                 </div>
                 <div className="ml-5">
                   <h3 className="text-lg font-medium text-gray-900">Bookings</h3>
-                  <p className="mt-1 text-sm text-gray-500">View and manage bookings</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {loadingData ? 'Loading bookings...' : `${stats.bookings} bookings from backend`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -216,7 +282,9 @@ export default function VendorDashboard() {
                 </div>
                 <div className="ml-5">
                   <h3 className="text-lg font-medium text-gray-900">Reviews</h3>
-                  <p className="mt-1 text-sm text-gray-500">Customer feedback</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {loadingData ? 'Loading reviews...' : `${stats.reviews} reviews from backend`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -267,7 +335,7 @@ export default function VendorDashboard() {
                 </div>
                 <div className="ml-5">
                   <h3 className="text-lg font-medium text-gray-900">Analytics</h3>
-                  <p className="mt-1 text-sm text-gray-500">View your performance</p>
+                  <p className="mt-1 text-sm text-gray-500">View your performance from live backend data</p>
                 </div>
               </div>
             </div>
@@ -277,6 +345,9 @@ export default function VendorDashboard() {
         {/* Quick Actions */}
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Quick Actions</h2>
+          <p className="text-gray-600 mb-4">
+            Your dashboard is now connected to the backend and will reflect real vendor data.
+          </p>
           <div className="flex flex-wrap gap-4">
             <button className="px-6 py-3 text-white rounded-md transition-colors hover:opacity-90" style={{backgroundColor: '#755A7B'}}>
               Add New Service

@@ -1,9 +1,19 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { VendorsModule } from './vendors/vendors.module';
+import { OfferingsModule } from './offerings/offerings.module';
+import { BookingsModule } from './bookings/bookings.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { User } from './users/entities/user.entity';
+import { Vendor } from './vendors/entities/vendor.entity';
+import { ServiceOffering } from './offerings/entities/offering.entity';
+import { Booking } from './bookings/entities/booking.entity';
+import { Review } from './reviews/entities/review.entity';
 
 @Module({
   imports: [
@@ -11,21 +21,23 @@ import { AuthModule } from './auth/auth.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'mysql',
-        host: configService.get('DB_HOST'),
-        port: +configService.get('DB_PORT'),
-        username: configService.get('DB_USER'),
-        password: configService.get('DB_PASS'),
-        database: configService.get('DB_NAME'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: configService.get('NODE_ENV') === 'development',
-      }),
-      inject: [ConfigService],
+    TypeOrmModule.forRoot({
+      type: 'mysql',
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT),
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      entities: [User, Vendor, ServiceOffering, Booking, Review],
+      autoLoadEntities: true,
+      synchronize: true,
     }),
     AuthModule,
+    UsersModule,
+    VendorsModule,
+    OfferingsModule,
+    BookingsModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

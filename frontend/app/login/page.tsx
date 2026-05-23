@@ -2,6 +2,36 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import { getVendorDashboardPath } from '@/lib/constants';
+
+type UserAuthResponse = {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    name?: string;
+    organizationName?: string;
+    location?: string;
+    categories?: string[];
+    isActive?: boolean;
+  };
+};
+
+type VendorAuthResponse = {
+  accessToken: string;
+  id: number;
+  email: string;
+  role: string;
+  organizationName: string;
+  phone: string;
+  location: string;
+  categories: string[];
+  contactPerson?: string;
+  isActive: boolean;
+  createdAt: string;
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,40 +58,41 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Mock authentication - works without backend
-      const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-      const user = existingUsers.find(
-        (u: any) => u.email === formData.email && u.password === formData.password
-      );
+      try {
+        const vendorResponse = await apiFetch<VendorAuthResponse>('/vendors/auth/login', {
+          method: 'POST',
+          body: JSON.stringify(formData),
+        });
 
-      if (!user) {
-        throw new Error('Invalid email or password');
-      }
+        localStorage.setItem('token', vendorResponse.accessToken);
+        localStorage.setItem(
+          'user',
+          JSON.stringify({
+            ...vendorResponse,
+            role: 'vendor',
+          })
+        );
+        router.push(getVendorDashboardPath(vendorResponse.categories));
+        return;
+      } catch {
+        const userResponse = await apiFetch<UserAuthResponse>('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify(formData),
+        });
 
-      // Remove password from stored user data
-      const { password, ...userWithoutPassword } = user;
+        localStorage.setItem('token', userResponse.token);
+        localStorage.setItem('user', JSON.stringify(userResponse.user));
 
-      // Store token and user info
-      const token = btoa(`${user.id}:${Date.now()}`);
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userWithoutPassword));
-
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Navigate to appropriate dashboard based on role
-      switch (user.role) {
-        case 'user':
-          router.push('/dashboard/user');
-          break;
-        case 'vendor':
-          router.push('/dashboard/vendor');
-          break;
-        case 'admin':
-          router.push('/dashboard/admin');
-          break;
-        default:
-          router.push('/');
+        switch (userResponse.user.role) {
+          case 'user':
+            router.push('/dashboard/user');
+            break;
+          case 'admin':
+            router.push('/dashboard/admin');
+            break;
+          default:
+            router.push('/');
+        }
       }
     } catch (error) {
       setErrors(error instanceof Error ? error.message : 'An error occurred during login');
@@ -74,12 +105,12 @@ export default function LoginPage() {
     <div 
       className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8" 
       style={{
-        backgroundImage: 'url(/19.jpg)',
+        backgroundImage: 'url(/19.png)',
         backgroundSize: 'cover',
         backgroundPosition: 'center'
       }}
     >
-      <div className="max-w-md w-full space-y-8 p-10 rounded-xl shadow-2xl" style={{backgroundColor: 'rgba(255, 255, 255, 0.25)', backdropFilter: 'blur(10px)'}}>
+      <div className="max-w-md w-full space-y-8 p-10 rounded-xl shadow-2xl" style={{backgroundColor: 'rgba(255, 255, 255, 0.15)', backdropFilter: 'blur(10px)'}}>
         <div>
           <div className="flex justify-center mb-4">
             <img src="/logo.png" alt="Wedora Logo" className="h-20 w-20" />

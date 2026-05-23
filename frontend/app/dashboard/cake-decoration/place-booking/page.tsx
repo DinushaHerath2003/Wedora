@@ -13,7 +13,7 @@ interface Booking {
   clientEmail: string;
   clientPhone: string;
   description: string;
-  category: BeautyCategory;
+  category: CakeCategory;
   time: string;
 }
 

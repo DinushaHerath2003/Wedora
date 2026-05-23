@@ -1,5 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsArray } from 'class-validator';
-import { UserRole } from '../common/constants';
+import { UserRole } from '../../common/constants';
 
 export class SignupDto {
   @IsEnum(UserRole)

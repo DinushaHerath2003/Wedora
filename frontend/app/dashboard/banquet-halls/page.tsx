@@ -246,7 +246,6 @@ export default function BanquetHallsDashboard() {
                 background: 'transparent'
               }}
               onMouseEnter={(e) => e.currentTarget.style.borderColor = '#A495A8'}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
               onMouseLeave={(e) => e.currentTarget.style.borderColor = activeCategory === 'outdoor-venues' ? '#755A7B' : 'transparent'}
             >
               Outdoor Venues

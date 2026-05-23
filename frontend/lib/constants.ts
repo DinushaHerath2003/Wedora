@@ -88,3 +88,26 @@ export const VENDOR_CATEGORIES = [
 ];
 
 export type VendorCategory = typeof VENDOR_CATEGORIES[number];
+
+const VENDOR_DASHBOARD_ROUTES: Record<string, string> = {
+  'venue-accommodation': '/dashboard/venue-accommodation',
+  'photography-videography': '/dashboard/photography',
+  'fashion-beauty': '/dashboard/fashion-beauty',
+  entertainment: '/dashboard/entertainment',
+  transportation: '/dashboard/transportation',
+  'ceremonial-services': '/dashboard/ceremonial',
+  'cake-decoration': '/dashboard/cake-decoration',
+  'gifting-souvenirs': '/dashboard/gifting',
+};
+
+export function getVendorDashboardPath(categories: string[] = []): string {
+  for (const category of categories) {
+    const route = VENDOR_DASHBOARD_ROUTES[category];
+
+    if (route) {
+      return route;
+    }
+  }
+
+  return '/dashboard/vendor';
+}
