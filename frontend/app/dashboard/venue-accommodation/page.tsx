@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
+import DashboardNavbar from '@/components/DashboardNavbar';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus, FaBuilding, FaHotel, FaTree } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
@@ -20,6 +23,7 @@ interface Package {
 }
 
 interface VendorUser {
+  id?: number;
   name: string;
   email: string;
   role: string;
@@ -31,8 +35,10 @@ export default function VenueAccommodationDashboard() {
   const [user, setUser] = useState<VendorUser | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [activeCategory, setActiveCategory] = useState<VenueCategory>('hotel-rooms');
+  const [packageCategory, setPackageCategory] = useState('hotel-room');
   const [selectedFacilities, setSelectedFacilities] = useState<string[]>([]);
   const [selectedRoomType, setSelectedRoomType] = useState<string>('');
+  const [toast, setToast] = useState<ToastProps | null>(null);
   const [newPackage, setNewPackage] = useState({
     title: '',
     pricePerDay: '',
@@ -74,20 +80,46 @@ export default function VenueAccommodationDashboard() {
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
+      if (userData.id) {
+        fetchVendorPackages(userData.id);
+      }
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Demo Venue Company'
-      });
+      // Redirect to login if not authenticated
+      router.push('/login');
     }
-    
-    const savedPackages = localStorage.getItem('venuePackages');
-    if (savedPackages) {
-      setPackages(JSON.parse(savedPackages));
+  }, [router]);
+
+  useEffect(() => {
+    setPackageCategory(
+      activeCategory === 'hotel-rooms'
+        ? 'hotel-room'
+        : activeCategory === 'banquet-halls'
+        ? 'banquet-hall'
+        : 'outdoor-venue'
+    );
+  }, [activeCategory]);
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setPackages(
+        offerings.map((offering) => ({
+          id: offering.id.toString(),
+          category: offering.category as VenueCategory,
+          title: offering.name,
+          pricePerDay: Number(offering.price),
+          facilities: offering.facilities || [],
+          photos: offering.images || [],
+          createdAt: new Date(offering.createdAt),
+          stock: offering.stock,
+          discount: offering.discount,
+          discountType: offering.discountType,
+        }))
+      );
+    } catch (error) {
+      console.error('Unable to load vendor packages', error);
     }
-  }, []);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -104,39 +136,110 @@ export default function VenueAccommodationDashboard() {
     }
   };
 
-  const handleSubmitPackage = (e?: React.FormEvent) => {
+  const handleSubmitPackage = async (e?: React.FormEvent, isDraft = false) => {
     if (e) e.preventDefault();
-    
-    const packageData: Package = {
-      id: Date.now().toString(),
-      category: activeCategory,
-      title: newPackage.title,
-      pricePerDay: parseFloat(newPackage.pricePerDay),
-      facilities: newPackage.facilities.split(',').map(f => f.trim()),
-      photos: newPackage.photos.map(f => URL.createObjectURL(f)),
-      createdAt: new Date(),
+    const vendorId = Number((user as any).id);
+
+    if (!user || !('id' in user) || Number.isNaN(vendorId) || vendorId <= 0) {
+      setToast({
+        message: 'Invalid user session. Please log in again.',
+        type: 'error',
+      });
+      router.push('/login');
+      return;
+    }
+
+    if (!newPackage.title || !packageCategory || !newPackage.pricePerDay) {
+      setToast({
+        message: 'Please fill in all required fields: Package Name, Category, and Price',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Validate description word count
+    const wordCount = newPackage.facilities.trim().split(/\s+/).filter(w => w).length;
+    if (!isDraft && wordCount < 200) {
+      setToast({
+        message: `Description must be at least 200 words. Currently: ${wordCount} words`,
+        type: 'error',
+      });
+      return;
+    }
+
+    const payload = {
+      name: newPackage.title,
+      description: newPackage.facilities,
+      category: packageCategory,
+      price: parseFloat(newPackage.pricePerDay),
+      facilities: selectedFacilities,
+      roomType: selectedRoomType,
       stock: newPackage.stock ? parseInt(newPackage.stock) : undefined,
       discount: newPackage.discount || undefined,
       discountType: newPackage.discountType || undefined,
+      images: newPackage.photos.map((file) => file.name),
+      vendorId,
+      isDraft,
     };
 
-    const updatedPackages = [...packages, packageData];
-    setPackages(updatedPackages);
-    localStorage.setItem('venuePackages', JSON.stringify(updatedPackages));
+    try {
+      console.log('Submitting package payload:', JSON.stringify(payload, null, 2));
+      const createdPackage = await apiFetch<any>('/offerings', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
 
-    setNewPackage({
-      title: '',
-      pricePerDay: '',
-      facilities: '',
-      stock: '',
-      discount: '',
-      discountType: '',
-      photos: [],
-    });
+      const packageData: Package = {
+        id: createdPackage.id.toString(),
+        category: createdPackage.category as VenueCategory,
+        title: createdPackage.name,
+        pricePerDay: Number(createdPackage.price),
+        facilities: createdPackage.facilities || [],
+        photos: createdPackage.images || [],
+        createdAt: new Date(createdPackage.createdAt),
+        stock: createdPackage.stock,
+        discount: createdPackage.discount,
+        discountType: createdPackage.discountType,
+      };
+
+      setPackages((prev) => [...prev, packageData]);
+      setNewPackage({
+        title: '',
+        pricePerDay: '',
+        facilities: '',
+        stock: '',
+        discount: '',
+        discountType: '',
+        photos: [],
+      });
+      setSelectedFacilities([]);
+      setSelectedRoomType('');
+      setPackageCategory(activeCategory);
+      
+      setToast({
+        message: isDraft ? 'Package saved as draft successfully! 📋' : 'Package posted successfully! 🎉',
+        type: 'success',
+      });
+    } catch (err) {
+      console.error('Failed to submit package', err);
+      setToast({
+        message: `Error: ${err instanceof Error ? err.message : 'Failed to create package'}`,
+        type: 'error',
+      });
+    }
   };
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
@@ -290,13 +393,14 @@ export default function VenueAccommodationDashboard() {
             </div>
             <div className="flex gap-3">
               <button 
+                onClick={(e) => handleSubmitPackage(e, true)}
                 className="px-4 md:px-6 py-2.5 border-2 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm md:text-base"
                 style={{borderColor: '#e5e7eb'}}
               >
                 <FaFileInvoice /> Save Draft
               </button>
               <button 
-                onClick={() => handleSubmitPackage()}
+                onClick={(e) => handleSubmitPackage(e, false)}
                 className="px-4 md:px-6 py-2.5 rounded-lg font-medium text-white hover:opacity-90 transition-opacity flex items-center gap-2 text-sm md:text-base"
                 style={{backgroundColor: '#755A7B'}}
               >
@@ -320,21 +424,34 @@ export default function VenueAccommodationDashboard() {
                       required
                       value={newPackage.title}
                       onChange={(e) => setNewPackage({...newPackage, title: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 font-medium placeholder-gray-400"
                       placeholder="Deluxe Wedding Package"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Description of Package</label>
+                    <div className="flex justify-between items-start mb-2">
+                      <label className="block text-sm font-medium text-gray-700">Description of Package</label>
+                      <span className="text-xs text-gray-500 ml-2">
+                        {newPackage.facilities.trim().split(/\s+/).filter(w => w).length} / 200 words
+                      </span>
+                    </div>
                     <textarea
                       required
                       value={newPackage.facilities}
                       onChange={(e) => setNewPackage({...newPackage, facilities: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 placeholder-gray-400"
+                      style={{
+                        borderColor: newPackage.facilities.trim().split(/\s+/).filter(w => w).length < 200 ? '#d1d5db' : '#10b981'
+                      }}
                       rows={5}
-                      placeholder="Luxurious wedding package with premium amenities. Includes spacious ballroom, elegant decorations, catering services, and dedicated event coordinator. Perfect for weddings, receptions, and special celebrations."
+                      placeholder="Luxurious wedding package with premium amenities. Includes spacious ballroom, elegant decorations, catering services, and dedicated event coordinator. Perfect for weddings, receptions, and special celebrations..."
                     />
+                    {newPackage.facilities.trim().split(/\s+/).filter(w => w).length < 200 && newPackage.facilities.trim().length > 0 && (
+                      <p className="text-xs text-orange-600 mt-2">
+                        ⚠️ Description must be at least 200 words. {200 - newPackage.facilities.trim().split(/\s+/).filter(w => w).length} more words needed.
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -408,7 +525,7 @@ export default function VenueAccommodationDashboard() {
                       required
                       value={newPackage.pricePerDay}
                       onChange={(e) => setNewPackage({...newPackage, pricePerDay: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 font-medium placeholder-gray-400"
                       placeholder="Rs. 125,000"
                     />
                   </div>
@@ -419,7 +536,7 @@ export default function VenueAccommodationDashboard() {
                       type="text"
                       value={newPackage.discount}
                       onChange={(e) => setNewPackage({...newPackage, discount: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 font-medium placeholder-gray-400"
                       placeholder="10%"
                     />
                   </div>
@@ -431,11 +548,23 @@ export default function VenueAccommodationDashboard() {
                         type="text"
                         value={newPackage.discountType}
                         onChange={(e) => setNewPackage({...newPackage, discountType: e.target.value})}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 font-medium placeholder-gray-400"
                         placeholder="Early Bird Discount"
                       />
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gray-800"></div>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Available Stock</label>
+                    <input
+                      type="number"
+                      value={newPackage.stock}
+                      onChange={(e) => setNewPackage({...newPackage, stock: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 font-medium placeholder-gray-400"
+                      placeholder="10"
+                      min="1"
+                    />
                   </div>
                 </div>
               </div>
@@ -502,7 +631,8 @@ export default function VenueAccommodationDashboard() {
                   <div className="relative mb-4">
                     <select
                       className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 appearance-none"
-                      defaultValue="hotel-room"
+                      value={packageCategory}
+                      onChange={(e) => setPackageCategory(e.target.value)}
                     >
                       <option value="banquet-hall">Banquet Hall</option>
                       <option value="hotel-room">Hotel Room</option>

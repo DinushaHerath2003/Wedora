@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
+import CryptoRandomUUIDPolyfill from '@/components/CryptoRandomUUIDPolyfill';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +35,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${seasonFont.variable} antialiased`}
         suppressHydrationWarning
       >
+        <CryptoRandomUUIDPolyfill />
         {children}
       </body>
     </html>

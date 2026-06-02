@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Query, ValidationPipe } from '@nestjs/common';
 import { OfferingsService } from './offerings.service';
 import { CreateOfferingDto, UpdateOfferingDto } from './dto/offering.dto';
 
@@ -7,7 +7,7 @@ export class OfferingsController {
   constructor(private offeringsService: OfferingsService) {}
 
   @Post()
-  create(@Body() createOfferingDto: CreateOfferingDto) {
+  create(@Body(ValidationPipe) createOfferingDto: CreateOfferingDto) {
     return this.offeringsService.create(createOfferingDto);
   }
 
@@ -25,7 +25,7 @@ export class OfferingsController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() updateOfferingDto: UpdateOfferingDto) {
+  update(@Param('id') id: string, @Body(ValidationPipe) updateOfferingDto: UpdateOfferingDto) {
     return this.offeringsService.update(+id, updateOfferingDto);
   }
 
