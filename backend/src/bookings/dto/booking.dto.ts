@@ -1,9 +1,10 @@
-import { IsString, IsNumber, IsDate, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum } from 'class-validator';
 import { BookingStatus } from '../entities/booking.entity';
 
 export class CreateBookingDto {
+  @IsOptional()
   @IsString()
-  userId: string;
+  userId?: string;
 
   @IsNumber()
   offeringId: number;
@@ -11,8 +12,23 @@ export class CreateBookingDto {
   @IsNumber()
   vendorId: number;
 
-  @IsDate()
-  eventDate: Date;
+  @IsString()
+  eventDate: string;
+
+  @IsString()
+  eventTime: string;
+
+  @IsOptional()
+  @IsString()
+  clientName?: string;
+
+  @IsOptional()
+  @IsString()
+  clientEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  clientPhone?: string;
 
   @IsOptional()
   @IsNumber()
@@ -29,8 +45,24 @@ export class CreateBookingDto {
 
 export class UpdateBookingDto {
   @IsOptional()
-  @IsDate()
-  eventDate?: Date;
+  @IsString()
+  eventDate?: string;
+
+  @IsOptional()
+  @IsString()
+  eventTime?: string;
+
+  @IsOptional()
+  @IsString()
+  clientName?: string;
+
+  @IsOptional()
+  @IsString()
+  clientEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  clientPhone?: string;
 
   @IsOptional()
   @IsNumber()

@@ -18,7 +18,7 @@ services:
     container_name: wedora_backend
     restart: always
     ports:
-      - "3001:3001"
+      - "3002:3002"
     depends_on:
       - mysql
     env_file:

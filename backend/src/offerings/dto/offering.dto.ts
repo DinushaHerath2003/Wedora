@@ -2,24 +2,48 @@ import { IsString, IsNumber, IsOptional, IsArray, IsBoolean } from 'class-valida
 
 export class CreateOfferingDto {
   @IsString()
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()
   description?: string;
 
   @IsString()
-  category: string;
+  category!: string;
 
   @IsNumber()
-  price: number;
+  price!: number;
+
+  @IsOptional()
+  @IsArray()
+  facilities?: string[];
+
+  @IsOptional()
+  @IsString()
+  roomType?: string;
+
+  @IsOptional()
+  @IsNumber()
+  stock?: number;
+
+  @IsOptional()
+  @IsString()
+  discount?: string;
+
+  @IsOptional()
+  @IsString()
+  discountType?: string;
 
   @IsOptional()
   @IsArray()
   images?: string[];
 
+  @IsOptional()
+  @IsBoolean()
+  isDraft?: boolean;
+
   @IsNumber()
-  vendorId: number;
+  vendorId!: number;
 }
 
 export class UpdateOfferingDto {
@@ -41,7 +65,31 @@ export class UpdateOfferingDto {
 
   @IsOptional()
   @IsArray()
+  facilities?: string[];
+
+  @IsOptional()
+  @IsString()
+  roomType?: string;
+
+  @IsOptional()
+  @IsNumber()
+  stock?: number;
+
+  @IsOptional()
+  @IsString()
+  discount?: string;
+
+  @IsOptional()
+  @IsString()
+  discountType?: string;
+
+  @IsOptional()
+  @IsArray()
   images?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isDraft?: boolean;
 
   @IsOptional()
   @IsBoolean()

@@ -18,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # Expose backend port
-EXPOSE 3000
+EXPOSE 3002
 
 # Start app
 CMD ["npm", "run", "start:prod"]

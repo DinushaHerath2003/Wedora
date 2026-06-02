@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
@@ -30,6 +31,7 @@ export default function PlaceBookingPage() {
   const [activeCategory, setActiveCategory] = useState<VenueCategory>('hotel-rooms');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [offerings, setOfferings] = useState<{ id: number; category: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -40,6 +42,20 @@ export default function PlaceBookingPage() {
     description: '',
     time: '10:00'
   });
+  const [bookingError, setBookingError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  const timeSlots = [
+    '09:00',
+    '10:00',
+    '11:00',
+    '12:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+    '17:00',
+  ];
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -67,27 +83,89 @@ export default function PlaceBookingPage() {
     }
   };
 
+  const normalizeVenueCategory = (category: string | undefined): VenueCategory => {
+    if (category === 'hotel-rooms' || category === 'hotel-room') {
+      return 'hotel-rooms';
+    }
+    if (category === 'banquet-halls' || category === 'banquet-hall') {
+      return 'banquet-halls';
+    }
+    if (category === 'outdoor-venues' || category === 'outdoor-venue') {
+      return 'outdoor-venues';
+    }
+    return 'hotel-rooms';
+  };
+
+  const getPackageCategory = (category: VenueCategory) => {
+    switch (category) {
+      case 'hotel-rooms':
+        return 'hotel-room';
+      case 'banquet-halls':
+        return 'banquet-hall';
+      case 'outdoor-venues':
+        return 'outdoor-venue';
+      default:
+        return 'hotel-room';
+    }
+  };
+
+  const isTimeSlotBooked = (dateStr: string, timeSlot: string, ignoreBookingId?: string) => {
+    return bookings.some(booking =>
+      booking.date === dateStr &&
+      booking.category === activeCategory &&
+      booking.time === timeSlot &&
+      booking.id !== ignoreBookingId
+    );
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
+      const vendorId = Number(userData.id);
+      if (!Number.isNaN(vendorId) && vendorId > 0) {
+        fetchVendorBookings(vendorId);
+        fetchVendorOfferings(vendorId);
+      }
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Demo Venue Company'
-      });
+      router.push('/login');
     }
+  }, [router]);
 
-    // Load bookings from localStorage
-    const savedBookings = localStorage.getItem('venueBookings');
-    if (savedBookings) {
-      setBookings(JSON.parse(savedBookings));
+  const fetchVendorBookings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/bookings?vendorId=${vendorId}`);
+      const mapped = data.map((booking) => ({
+        id: booking.id.toString(),
+        date: booking.eventDate ? booking.eventDate.slice(0, 10) : '',
+        time: booking.eventTime || '09:00',
+        clientName: booking.clientName || booking.user?.name || 'Guest',
+        clientEmail: booking.clientEmail || booking.user?.email || '',
+        clientPhone: booking.clientPhone || '',
+        description: booking.notes || '',
+        category: normalizeVenueCategory(booking.offering?.category) as VenueCategory,
+      }));
+      setBookings(mapped);
+    } catch (error) {
+      console.error('Failed to load vendor bookings', error);
+      setApiError('Unable to load bookings from backend. Showing local bookings only.');
     }
-  }, []);
+  };
+
+  const fetchVendorOfferings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setOfferings(
+        data.map((offering) => ({
+          id: offering.id,
+          category: offering.category,
+        }))
+      );
+    } catch (error) {
+      console.error('Failed to load offerings', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -129,50 +207,106 @@ export default function PlaceBookingPage() {
     setSelectedDate(dateStr);
     setShowBookingModal(true);
     setEditingBooking(null);
+    setBookingError('');
     setNewBooking({
       clientName: '',
       clientEmail: '',
       clientPhone: '',
       description: '',
-      time: '10:00'
+      time: '09:00'
     });
   };
 
-  const handleSaveBooking = () => {
+  const handleSaveBooking = async () => {
     if (!selectedDate) return;
 
-    if (editingBooking) {
-      // Update existing booking
-      const updatedBookings = bookings.map(booking =>
-        booking.id === editingBooking.id
-          ? {
-              ...booking,
-              clientName: newBooking.clientName,
-              clientEmail: newBooking.clientEmail,
-              clientPhone: newBooking.clientPhone,
-              description: newBooking.description,
-              time: newBooking.time
-            }
-          : booking
-      );
-      setBookings(updatedBookings);
-      localStorage.setItem('venueBookings', JSON.stringify(updatedBookings));
-    } else {
-      // Create new booking
-      const booking: Booking = {
-        id: Date.now().toString(),
-        date: selectedDate,
-        clientName: newBooking.clientName,
-        clientEmail: newBooking.clientEmail,
-        clientPhone: newBooking.clientPhone,
-        description: newBooking.description,
-        category: activeCategory,
-        time: newBooking.time
-      };
+    const duplicateSlot = bookings.some(booking =>
+      booking.date === selectedDate &&
+      booking.category === activeCategory &&
+      booking.time === newBooking.time &&
+      (!editingBooking || booking.id !== editingBooking.id)
+    );
 
-      const updatedBookings = [...bookings, booking];
-      setBookings(updatedBookings);
-      localStorage.setItem('venueBookings', JSON.stringify(updatedBookings));
+    if (duplicateSlot) {
+      setBookingError('This time slot is already booked for the selected date. Please choose a different time.');
+      return;
+    }
+
+    const vendorId = Number((user as any).id);
+    const offeringCategory = getPackageCategory(activeCategory);
+    const selectedOffering = offerings.find((offering) => offering.category === offeringCategory) || offerings[0];
+
+    if (!user || Number.isNaN(vendorId) || vendorId <= 0) {
+      setBookingError('Unable to save booking: invalid vendor session.');
+      return;
+    }
+
+    const payload = {
+      offeringId: selectedOffering?.id ?? 0,
+      vendorId,
+      eventDate: selectedDate,
+      eventTime: newBooking.time,
+      clientName: newBooking.clientName,
+      clientEmail: newBooking.clientEmail,
+      clientPhone: newBooking.clientPhone,
+      notes: newBooking.description,
+    };
+
+    try {
+      if (editingBooking) {
+        await apiFetch<any>(`/bookings/${editingBooking.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        const updatedBookings = bookings.map((booking) =>
+          booking.id === editingBooking.id
+            ? {
+                ...booking,
+                clientName: newBooking.clientName,
+                clientEmail: newBooking.clientEmail,
+                clientPhone: newBooking.clientPhone,
+                description: newBooking.description,
+                time: newBooking.time,
+              }
+            : booking
+        );
+        setBookings(updatedBookings);
+      } else {
+        if (!selectedOffering) {
+          setBookingError('No service package was found for this category. Please add a package first.');
+          return;
+        }
+
+        const createdBooking = await apiFetch<any>('/bookings', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        const booking: Booking = {
+          id: createdBooking.id.toString(),
+          date: selectedDate,
+          clientName: newBooking.clientName,
+          clientEmail: newBooking.clientEmail,
+          clientPhone: newBooking.clientPhone,
+          description: newBooking.description,
+          category: activeCategory,
+          time: newBooking.time,
+        };
+        setBookings((prev) => [...prev, booking]);
+      }
+
+      setShowBookingModal(false);
+      setNewBooking({
+        clientName: '',
+        clientEmail: '',
+        clientPhone: '',
+        description: '',
+        time: '10:00'
+      });
+      setBookingError('');
+    } catch (error) {
+      console.error('Failed to save booking', error);
+      setBookingError('Unable to save booking. Please try again later.');
     }
 
     setShowBookingModal(false);
@@ -187,6 +321,7 @@ export default function PlaceBookingPage() {
 
   const handleEditBooking = (booking: Booking) => {
     setEditingBooking(booking);
+    setBookingError('');
     setNewBooking({
       clientName: booking.clientName,
       clientEmail: booking.clientEmail,
@@ -196,12 +331,21 @@ export default function PlaceBookingPage() {
     });
   };
 
-  const handleDeleteBooking = (id: string) => {
-    if (confirm('Are you sure you want to delete this booking?')) {
-      const updatedBookings = bookings.filter(booking => booking.id !== id);
-      setBookings(updatedBookings);
-      localStorage.setItem('venueBookings', JSON.stringify(updatedBookings));
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) {
+      return;
     }
+
+    try {
+      await apiFetch<any>(`/bookings/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete booking', error);
+    }
+
+    const updatedBookings = bookings.filter(booking => booking.id !== id);
+    setBookings(updatedBookings);
   };
 
   const nextMonth = () => {
@@ -649,12 +793,31 @@ export default function PlaceBookingPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Meeting Time</label>
-                  <input
-                    type="time"
-                    value={newBooking.time}
-                    onChange={(e) => setNewBooking({...newBooking, time: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    {timeSlots.map((slot) => {
+                      const booked = isTimeSlotBooked(selectedDate, slot, editingBooking?.id ?? undefined);
+                      const selected = newBooking.time === slot;
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={booked}
+                          onClick={() => {
+                            if (!booked) {
+                              setNewBooking({ ...newBooking, time: slot });
+                              setBookingError('');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${selected ? 'bg-red-500 text-white border-red-500' : booked ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-200 hover:border-purple-500 hover:text-purple-700'}`}
+                        >
+                          {slot}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {bookingError && (
+                    <p className="mt-2 text-sm text-red-600">{bookingError}</p>
+                  )}
                 </div>
 
                 <div>

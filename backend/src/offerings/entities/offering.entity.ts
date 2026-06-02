@@ -14,44 +14,62 @@ import { Review } from '../../reviews/entities/review.entity';
 @Entity('service_offerings')
 export class ServiceOffering {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  name: string;
+  name!: string;
 
-  @Column({ nullable: true })
-  description: string;
+  @Column({ type: 'longtext', nullable: true })
+  description!: string;
 
   @Column()
-  category: string;
+  category!: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
+  price!: number;
 
   @Column('simple-array', { nullable: true })
-  images: string[];
+  facilities!: string[];
+
+  @Column({ nullable: true })
+  roomType!: string;
+
+  @Column({ type: 'int', nullable: true })
+  stock!: number;
+
+  @Column({ nullable: true })
+  discount!: string;
+
+  @Column({ nullable: true })
+  discountType!: string;
+
+  @Column('simple-array', { nullable: true })
+  images!: string[];
+
+  @Column({ default: false })
+  isDraft!: boolean;
 
   @Column({ default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   // Foreign Keys & Relations
   @Column()
-  vendorId: number;
+  vendorId!: number;
 
   @ManyToOne(() => Vendor, (vendor) => vendor.offerings, {
     onDelete: 'CASCADE',
   })
-  vendor: Vendor;
+  vendor!: Vendor;
 
   @OneToMany(() => Booking, (booking) => booking.offering)
-  bookings: Booking[];
+  bookings!: Booking[];
 
   @OneToMany(() => Review, (review) => review.offering)
-  reviews: Review[];
+  reviews!: Review[];
 }

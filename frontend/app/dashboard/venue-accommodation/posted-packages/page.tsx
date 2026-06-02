@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
@@ -20,6 +22,7 @@ interface Package {
 }
 
 interface VendorUser {
+  id?: number;
   name: string;
   email: string;
   role: string;
@@ -30,78 +33,9 @@ export default function PostedPackagesPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
   const [activeCategory, setActiveCategory] = useState<VenueCategory>('hotel-rooms');
+  const [toast, setToast] = useState<ToastProps | null>(null);
 
-  // Mock packages data - replace with actual data from your backend
-  const mockPackages: Package[] = [
-    {
-      id: '1',
-      category: 'hotel-rooms',
-      title: 'Deluxe Wedding Suite',
-      pricePerDay: 125000,
-      facilities: ['WiFi', 'AC', 'Parking', 'Catering'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      stock: 5,
-      discount: '10%',
-      discountType: 'Early Bird'
-    },
-    {
-      id: '2',
-      category: 'hotel-rooms',
-      title: 'Premium Room Package',
-      pricePerDay: 85000,
-      facilities: ['WiFi', 'AC', 'Parking'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      stock: 10
-    },
-    {
-      id: '3',
-      category: 'banquet-halls',
-      title: 'Grand Ballroom Package',
-      pricePerDay: 250000,
-      facilities: ['WiFi', 'AC', 'Parking', 'Catering'],
-      photos: ['/pack3.png'],
-      createdAt: new Date(),
-      stock: 2,
-      discount: '15%',
-      discountType: 'Weekend Special'
-    },
-    {
-      id: '4',
-      category: 'banquet-halls',
-      title: 'Classic Hall Package',
-      pricePerDay: 180000,
-      facilities: ['WiFi', 'AC', 'Catering'],
-      photos: ['/pack4.png'],
-      createdAt: new Date(),
-      stock: 3
-    },
-    {
-      id: '5',
-      category: 'outdoor-venues',
-      title: 'Garden Paradise Package',
-      pricePerDay: 200000,
-      facilities: ['Parking', 'Catering'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      stock: 4,
-      discount: '20%',
-      discountType: 'Season Discount'
-    },
-    {
-      id: '6',
-      category: 'outdoor-venues',
-      title: 'Beach View Package',
-      pricePerDay: 300000,
-      facilities: ['Parking', 'Catering'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      stock: 2
-    }
-  ];
-
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const [packages, setPackages] = useState<Package[]>([]);
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -135,15 +69,62 @@ export default function PostedPackagesPage() {
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
+      console.log('Fetching packages for vendor:', userData.id);
+      fetchVendorPackages(userData.id);
     } else {
-      setUser({
+      const demoUser = {
+        id: 0,
         name: 'Demo Vendor',
         email: 'demo@wedora.com',
         role: 'vendor',
         organizationName: 'Demo Venue Company'
+      };
+      setUser(demoUser);
+      setPackages([]);
+    }
+  }, [])
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      console.log('Fetched offerings:', offerings);
+      setPackages(
+        offerings
+          .filter((offering) => !offering.isDraft)
+          .map((offering) => {
+            const category = offering.category;
+            let mappedCategory: VenueCategory = 'hotel-rooms';
+            
+            if (category === 'hotel-rooms' || category === 'hotel-room') {
+              mappedCategory = 'hotel-rooms';
+            } else if (category === 'banquet-halls' || category === 'banquet-hall') {
+              mappedCategory = 'banquet-halls';
+            } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
+              mappedCategory = 'outdoor-venues';
+            }
+            
+            return {
+              id: offering.id.toString(),
+              category: mappedCategory,
+              title: offering.name,
+              pricePerDay: Number(offering.price),
+              facilities: offering.facilities || [],
+              photos: offering.images || [],
+              createdAt: new Date(offering.createdAt),
+              stock: offering.stock,
+              discount: offering.discount,
+              discountType: offering.discountType,
+            };
+          })
+      );
+    } catch (error) {
+      console.error('Unable to load posted packages', error);
+      setToast({
+        message: `Failed to load packages: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
       });
     }
-  }, []);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -151,9 +132,26 @@ export default function PostedPackagesPage() {
     router.push('/');
   };
 
-  const handleDeletePackage = (id: string) => {
-    if (confirm('Are you sure you want to delete this package?')) {
+  const handleDeletePackage = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this package?')) {
+      return;
+    }
+
+    try {
+      await apiFetch(`/offerings/${id}`, {
+        method: 'DELETE',
+      });
       setPackages(packages.filter(pkg => pkg.id !== id));
+      setToast({
+        message: 'Package deleted successfully! ✓',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Unable to delete package', error);
+      setToast({
+        message: `Failed to delete package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
     }
   };
 
@@ -161,6 +159,15 @@ export default function PostedPackagesPage() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
@@ -240,6 +247,24 @@ export default function PostedPackagesPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button
+                onClick={() => router.push('/')}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+              >
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Posted Packages</h1>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredPackages.length}</span> posted package{filteredPackages.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
           {/* Banner Section */}
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
@@ -311,78 +336,122 @@ export default function PostedPackagesPage() {
           {/* Packages Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {filteredPackages.map((pkg) => (
-              <div key={pkg.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow">
-                {/* Package Image */}
-                <div className="relative h-48 bg-gray-200">
+              <div 
+                key={pkg.id} 
+                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group"
+              >
+                {/* Package Image Container */}
+                <div className="relative h-48 bg-linear-to-br from-gray-200 to-gray-300 overflow-hidden group">
                   <img 
-                    src={pkg.photos[0]} 
+                    src={pkg.photos[0] || '/pack1.png'} 
                     alt={pkg.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
+                  {/* Overlay on Hover */}
+                  <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                  
+                  {/* Discount Badge */}
                   {pkg.discount && (
-                    <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                    <div className="absolute top-4 right-4 bg-linear-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg transform group-hover:scale-110 transition-transform">
                       {pkg.discount} OFF
+                    </div>
+                  )}
+                  
+                  {/* Stock Badge */}
+                  {pkg.stock !== undefined && (
+                    <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow-md ${
+                      pkg.stock > 0 
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-red-500 text-white'
+                    }`}>
+                      {pkg.stock > 0 ? `${pkg.stock} Available` : 'Out of Stock'}
                     </div>
                   )}
                 </div>
 
                 {/* Package Details */}
                 <div className="p-5">
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">{pkg.title}</h3>
+                  {/* Title */}
+                  <h3 className="text-lg font-bold text-gray-800 mb-3 line-clamp-2 group-hover:text-purple-600 transition-colors">
+                    {pkg.title}
+                  </h3>
                   
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl font-bold" style={{color: '#755A7B'}}>
+                  {/* Price Section */}
+                  <div className="flex items-baseline gap-2 mb-4 pb-4 border-b border-gray-100">
+                    <span className="text-3xl font-bold" style={{color: '#755A7B'}}>
                       Rs. {pkg.pricePerDay.toLocaleString()}
                     </span>
-                    <span className="text-sm text-gray-500">/day</span>
+                    <span className="text-sm text-gray-500 font-medium">/day</span>
                   </div>
 
+                  {/* Discount Type Badge */}
                   {pkg.discountType && (
-                    <div className="mb-3">
-                      <span className="inline-block bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold">
-                        {pkg.discountType}
+                    <div className="mb-4">
+                      <span className="inline-block bg-linear-to-r from-purple-100 to-purple-50 text-purple-700 px-4 py-1 rounded-full text-xs font-semibold border border-purple-200">
+                        🏷️ {pkg.discountType}
                       </span>
                     </div>
                   )}
 
                   {/* Facilities */}
                   <div className="mb-4">
-                    <p className="text-xs text-gray-500 mb-2">Facilities:</p>
-                    <div className="flex flex-wrap gap-1">
+                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">✨ Facilities:</p>
+                    <div className="flex flex-wrap gap-2">
                       {pkg.facilities.slice(0, 3).map((facility, idx) => (
-                        <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        <span key={idx} className="text-xs bg-linear-to-r from-purple-50 to-purple-100 text-purple-700 px-3 py-1 rounded-full border border-purple-200 font-medium">
                           {facility}
                         </span>
                       ))}
                       {pkg.facilities.length > 3 && (
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-medium">
                           +{pkg.facilities.length - 3} more
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Stock Info */}
-                  {pkg.stock !== undefined && (
-                    <p className="text-sm text-gray-600 mb-4">
-                      Stock: <span className="font-semibold">{pkg.stock} available</span>
-                    </p>
-                  )}
+                  {/* Created Date */}
+                  <p className="text-xs text-gray-500 mb-4">
+                    📅 Posted: {new Date(pkg.createdAt).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
+                  </p>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2">
                     <button 
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all"
-                      style={{backgroundColor: '#755A7B'}}
+                      onClick={() => router.push(`/dashboard/venue-accommodation/posted-packages/${pkg.id}`)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500 font-semibold text-emerald-700 bg-white transition-all hover:bg-emerald-600 hover:text-white hover:shadow-lg"
                     >
-                      <FaEdit /> Edit
+                      <FaEye size={16} /> See More
                     </button>
-                    <button 
-                      onClick={() => handleDeletePackage(pkg.id)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all"
-                    >
-                      <FaTrash /> Delete
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 font-medium transition-all hover:shadow-lg"
+                        style={{
+                          borderColor: '#755A7B',
+                          color: '#755A7B',
+                          backgroundColor: 'white',
+                          borderWidth: '2px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(117, 90, 123, 0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'white';
+                        }}
+                      >
+                        <FaEdit size={16} /> Edit
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePackage(pkg.id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all"
+                      >
+                        <FaTrash size={16} /> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

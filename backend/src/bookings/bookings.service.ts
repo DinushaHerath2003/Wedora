@@ -13,10 +13,14 @@ export class BookingsService {
 
   async create(createBookingDto: CreateBookingDto): Promise<Booking> {
     const booking = this.bookingRepository.create({
-      userId: createBookingDto.userId,
+      userId: createBookingDto.userId ?? null,
       offeringId: createBookingDto.offeringId,
       vendorId: createBookingDto.vendorId,
-      eventDate: createBookingDto.eventDate,
+      eventDate: new Date(createBookingDto.eventDate),
+      eventTime: createBookingDto.eventTime ?? null,
+      clientName: createBookingDto.clientName ?? null,
+      clientEmail: createBookingDto.clientEmail ?? null,
+      clientPhone: createBookingDto.clientPhone ?? null,
       guestCount: createBookingDto.guestCount,
       budget: createBookingDto.budget,
       notes: createBookingDto.notes,
@@ -52,7 +56,11 @@ export class BookingsService {
   }
 
   async update(id: number, updateBookingDto: UpdateBookingDto): Promise<Booking | null> {
-    await this.bookingRepository.update(id, updateBookingDto);
+    const payload: Partial<UpdateBookingDto> = { ...updateBookingDto };
+    if (payload.eventDate) {
+      payload.eventDate = new Date(payload.eventDate) as any;
+    }
+    await this.bookingRepository.update(id, payload);
     return this.findOne(id);
   }
 
