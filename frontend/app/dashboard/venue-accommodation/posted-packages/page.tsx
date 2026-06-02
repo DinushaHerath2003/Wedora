@@ -429,7 +429,19 @@ export default function PostedPackagesPage() {
                     </button>
                     <div className="flex gap-2">
                       <button 
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all bg-linear-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 shadow-md hover:shadow-lg"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 font-medium transition-all hover:shadow-lg"
+                        style={{
+                          borderColor: '#755A7B',
+                          color: '#755A7B',
+                          backgroundColor: 'white',
+                          borderWidth: '2px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(117, 90, 123, 0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'white';
+                        }}
                       >
                         <FaEdit size={16} /> Edit
                       </button>

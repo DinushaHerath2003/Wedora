@@ -5,6 +5,7 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { ServiceOffering } from '../../offerings/entities/offering.entity';
@@ -22,8 +23,8 @@ export class Booking {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  userId: string;
+  @Column({ type: 'varchar', nullable: true, default: null })
+  userId: string | null;
 
   @Column()
   offeringId: number;
@@ -33,6 +34,18 @@ export class Booking {
 
   @Column({ type: 'date' })
   eventDate: Date;
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  eventTime: string | null;
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  clientName: string | null;
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  clientEmail: string | null;
+
+  @Column({ type: 'varchar', nullable: true, default: null })
+  clientPhone: string | null;
 
   @Column({ type: 'int', nullable: true })
   guestCount: number;
@@ -57,8 +70,9 @@ export class Booking {
   updatedAt: Date;
 
   // Relations
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
+  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'userId' })
+  user?: User;
 
   @ManyToOne(() => ServiceOffering, (offering) => offering.bookings, {
     onDelete: 'CASCADE',

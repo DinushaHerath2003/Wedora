@@ -3,11 +3,31 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { apiFetch } from '@/lib/api';
 import { FaHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaStar, FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
+interface VendorOffering {
+  id: number;
+  name: string;
+  price: number;
+  category: string;
+  facilities: string[];
+  images: string[];
+}
+
 interface Vendor {
+  id: string;
+  id_text: string;
+  organizationName: string;
+  location: string;
+  phone: string;
+  contactPerson?: string;
+  offerings: VendorOffering[];
+}
+
+interface DisplayVendor {
   id: string;
   name: string;
   organizationName: string;
@@ -31,85 +51,104 @@ export default function VenueAccommodationServices() {
   const [showFilters, setShowFilters] = useState(false);
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
-
-  // Mock vendor data - replace with actual data from your backend
-  const mockVendors: Vendor[] = [
-    {
-      id: '1',
-      name: 'Cinderella Hotel',
-      organizationName: 'Cinderella Hotel',
-      category: ['hotel-rooms', 'banquet-halls'],
-      location: 'Colombo, Sri Lanka',
-      rating: 4.8,
-      reviewCount: 124,
-      minPrice: 85000,
-      maxPrice: 250000,
-      image: '/ven1.png',
-      packageCount: 6,
-      facilities: ['WiFi', 'AC', 'Parking', 'Catering']
-    },
-    {
-      id: '2',
-      name: 'Paradise Garden Venue',
-      organizationName: 'Paradise Garden Venue',
-      category: ['outdoor-venues'],
-      location: 'Kandy, Sri Lanka',
-      rating: 4.9,
-      reviewCount: 89,
-      minPrice: 150000,
-      maxPrice: 300000,
-      image: '/ven2.png',
-      packageCount: 4,
-      facilities: ['Parking', 'Catering', 'Outdoor Setup']
-    },
-    {
-      id: '3',
-      name: 'Royal Banquet Hall',
-      organizationName: 'Royal Banquet Hall',
-      category: ['banquet-halls'],
-      location: 'Galle, Sri Lanka',
-      rating: 4.7,
-      reviewCount: 156,
-      minPrice: 100000,
-      maxPrice: 200000,
-      image: '/ven3.png',
-      packageCount: 5,
-      facilities: ['WiFi', 'AC', 'Catering', 'Stage']
-    },
-    {
-      id: '4',
-      name: 'Ocean View Resort',
-      organizationName: 'Ocean View Resort',
-      category: ['hotel-rooms', 'outdoor-venues'],
-      location: 'Negombo, Sri Lanka',
-      rating: 4.6,
-      reviewCount: 98,
-      minPrice: 120000,
-      maxPrice: 280000,
-      image: '/ven1.png',
-      packageCount: 7,
-      facilities: ['WiFi', 'AC', 'Parking', 'Beach Access']
-    }
-  ];
-
-  const [vendors, setVendors] = useState<Vendor[]>(mockVendors);
-
-  const facilities = ['WiFi', 'AC', 'Parking', 'Catering', 'Stage', 'Beach Access', 'Outdoor Setup'];
+  const [vendors, setVendors] = useState<DisplayVendor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [facilities, setFacilities] = useState<string[]>(['WiFi', 'AC', 'Parking', 'Catering', 'Stage', 'Beach Access', 'Outdoor Setup']);
 
   useEffect(() => {
-    // Load user from localStorage
     const userStr = localStorage.getItem('user');
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
     } else {
-      // Demo user
       setUser({
         name: 'Dinusha Herath',
         email: 'DinushaHerath@gmail.com'
       });
     }
+    fetchVendorOfferings();
   }, []);
+
+  const fetchVendorOfferings = async () => {
+    try {
+      setLoading(true);
+      const offerings = await apiFetch<any[]>('/offerings');
+      
+      const vendorMap = new Map<number, any>();
+      const categoryMap = new Map<string, string>();
+      const allFacilities = new Set<string>();
+
+      offerings.forEach((offering) => {
+        if (!offering.isDraft && offering.vendor) {
+          const vendor = offering.vendor;
+          const vendorId = vendor.id;
+
+          if (!vendorMap.has(vendorId)) {
+            vendorMap.set(vendorId, {
+              id: vendorId.toString(),
+              name: vendor.organizationName,
+              organizationName: vendor.organizationName,
+              location: vendor.location || 'Not specified',
+              phone: vendor.phone || '',
+              categories: new Set<string>(),
+              offerings: [],
+              allFacilities: new Set<string>()
+            });
+          }
+
+          const vendorData = vendorMap.get(vendorId)!;
+          vendorData.offerings.push(offering);
+          
+          const category = offering.category || 'hotel-room';
+          let normalizedCategory = 'hotel-rooms';
+          if (category === 'hotel-rooms' || category === 'hotel-room') {
+            normalizedCategory = 'hotel-rooms';
+          } else if (category === 'banquet-halls' || category === 'banquet-hall') {
+            normalizedCategory = 'banquet-halls';
+          } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
+            normalizedCategory = 'outdoor-venues';
+          }
+          vendorData.categories.add(normalizedCategory);
+          
+          if (offering.facilities && Array.isArray(offering.facilities)) {
+            offering.facilities.forEach((f: string) => {
+              vendorData.allFacilities.add(f);
+              allFacilities.add(f);
+            });
+          }
+        }
+      });
+
+      const displayVendors: DisplayVendor[] = Array.from(vendorMap.values()).map(v => {
+        const prices = v.offerings.map((o: any) => Number(o.price) || 0);
+        const minPrice = Math.min(...prices, 0);
+        const maxPrice = Math.max(...prices, 500000);
+
+        return {
+          id: v.id,
+          name: v.name,
+          organizationName: v.organizationName,
+          category: Array.from(v.categories) as VenueCategory[],
+          location: v.location,
+          rating: 4.6,
+          reviewCount: Math.floor(Math.random() * 200) + 50,
+          minPrice,
+          maxPrice,
+          image: '/ven1.png',
+          packageCount: v.offerings.length,
+          facilities: Array.from(v.allFacilities)
+        };
+      });
+
+      setVendors(displayVendors);
+      setFacilities(Array.from(allFacilities).slice(0, 7));
+    } catch (error) {
+      console.error('Failed to fetch vendor offerings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -126,34 +165,35 @@ export default function VenueAccommodationServices() {
   };
 
   const filteredVendors = vendors.filter(vendor => {
-    // Category filter
     if (selectedCategory !== 'all' && !vendor.category.includes(selectedCategory)) {
       return false;
     }
-
-    // Search filter
     if (searchQuery && !vendor.organizationName.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !vendor.location.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
-
-    // Facilities filter
     if (selectedFacilities.length > 0 && !selectedFacilities.every(f => vendor.facilities.includes(f))) {
       return false;
     }
-
-    // Price filter
     if (vendor.minPrice > priceRange[1] || vendor.maxPrice < priceRange[0]) {
       return false;
     }
-
     return true;
   });
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="shadow-sm sticky top-0 z-50" style={{backgroundColor: '#755A7B'}}>
+      {loading ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="mb-4 text-4xl">⏳</div>
+            <p className="text-gray-600 font-medium">Loading venue packages...</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Header */}
+          <header className="shadow-sm sticky top-0 z-50" style={{backgroundColor: '#755A7B'}}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
             <img src="/logo.png" alt="Wedora Logo" className="h-10 w-10" />
@@ -578,6 +618,8 @@ export default function VenueAccommodationServices() {
           </div>
         </div>
       </footer>
+        </>
+      )}
     </div>
   );
 }
