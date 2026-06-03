@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 import Toast, { ToastProps } from '@/components/Toast';
-import { FaArrowLeft, FaHome, FaPhone, FaEnvelope, FaStar, FaHeart, FaShare, FaCheckCircle, FaClock, FaMoneyBillWave } from 'react-icons/fa';
+import { FaArrowLeft, FaHome, FaPhone, FaEnvelope, FaStar, FaHeart, FaShare, FaCheckCircle, FaClock, FaMoneyBillWave, FaCalculator, FaCalendarAlt } from 'react-icons/fa';
 
 interface PackageDetail {
   id: number;
@@ -24,11 +25,19 @@ interface PackageDetail {
 }
 
 interface VendorUser {
-  id?: number;
+  id?: number | string;
   name: string;
   email: string;
   role: string;
   organizationName?: string;
+}
+
+interface BudgetItem {
+  id: string;
+  category: string;
+  name: string;
+  price: number;
+  quantity: number;
 }
 
 export default function PackageDetailPage() {
@@ -42,6 +51,7 @@ export default function PackageDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<ToastProps | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [budgetPackages, setBudgetPackages] = useState<string[]>([]);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -52,6 +62,13 @@ export default function PackageDetailPage() {
       router.push('/login');
     }
   }, [router]);
+
+  useEffect(() => {
+    const storageKeys = getBudgetStorageKeys(user);
+    const scopedBudget = safeParseArray<string>(localStorage.getItem(storageKeys.budgetPackages));
+    const legacyBudget = safeParseArray<string>(localStorage.getItem('budgetPackages'));
+    setBudgetPackages([...scopedBudget, ...legacyBudget]);
+  }, [user]);
 
   useEffect(() => {
     const fetchPackageDetail = async () => {
@@ -86,6 +103,54 @@ export default function PackageDetailPage() {
       'outdoor-venue': 'Outdoor Venues',
     };
     return categoryMap[category] || category;
+  };
+
+  const handleAddToBudgetCalculator = () => {
+    if (!packageData) return;
+    const storageKeys = getBudgetStorageKeys(user);
+
+    if (!budgetPackages.includes(packageData.id.toString())) {
+      const updatedBudgetPackages = [...budgetPackages, packageData.id.toString()];
+      setBudgetPackages(updatedBudgetPackages);
+      localStorage.setItem(storageKeys.budgetPackages, JSON.stringify(updatedBudgetPackages));
+
+      const canonicalBudgetItems = safeParseArray<BudgetItem>(localStorage.getItem(storageKeys.budgetItems));
+      canonicalBudgetItems.push({
+        id: `pkg-${packageData.id}`,
+        category: packageData.category,
+        name: packageData.name,
+        price: packageData.price,
+        quantity: 1,
+      });
+      localStorage.setItem(storageKeys.budgetItems, JSON.stringify(canonicalBudgetItems));
+
+      const budgetPackageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
+      budgetPackageDetails.push({
+        packageId: packageData.id.toString(),
+        vendorId: packageData.vendorId.toString(),
+        category: packageData.category,
+        title: packageData.name,
+        price: packageData.price,
+        image: packageData.images[0] || '/pack1.png',
+        vendorName: 'Venue Accommodation',
+        quantity: 1,
+      });
+      localStorage.setItem(storageKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
+
+      setToast({
+        message: 'Package added to budget calculator.',
+        type: 'success',
+      });
+    } else {
+      setToast({
+        message: 'Package is already in your budget calculator.',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleBookMeeting = () => {
+    router.push(`/services/venue-accommodation/${packageData?.vendorId}/book-meeting/${packageData?.id}`);
   };
 
   if (isLoading) {
@@ -298,6 +363,20 @@ export default function PackageDetailPage() {
                 </button>
                 <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90" style={{ backgroundColor: '#755A7B' }}>
                   <FaMoneyBillWave /> Book Now
+                </button>
+                <button
+                  onClick={handleAddToBudgetCalculator}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium border-2 transition-all"
+                  style={{ borderColor: '#755A7B', color: '#755A7B', backgroundColor: 'white' }}
+                >
+                  <FaCalculator /> Add to Budget Calculator
+                </button>
+                <button
+                  onClick={handleBookMeeting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                  style={{ backgroundColor: '#10b981' }}
+                >
+                  <FaCalendarAlt /> Book a Meeting
                 </button>
                 <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-gray-700 transition-all border-2 border-gray-300 hover:border-gray-400">
                   <FaShare /> Share

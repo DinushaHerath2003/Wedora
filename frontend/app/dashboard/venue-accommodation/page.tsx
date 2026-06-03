@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Toast, { ToastProps } from '@/components/Toast';
 import DashboardNavbar from '@/components/DashboardNavbar';
@@ -23,7 +23,7 @@ interface Package {
 }
 
 interface VendorUser {
-  id?: number;
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -32,7 +32,9 @@ interface VendorUser {
 
 export default function VenueAccommodationDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<VendorUser | null>(null);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [activeCategory, setActiveCategory] = useState<VenueCategory>('hotel-rooms');
   const [packageCategory, setPackageCategory] = useState('hotel-room');
@@ -48,6 +50,9 @@ export default function VenueAccommodationDashboard() {
     discountType: '',
     photos: [] as File[],
   });
+
+  const organizationLabel = user?.organizationName || user?.name || 'Venue Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerText = () => {
     switch(activeCategory) {
@@ -76,18 +81,70 @@ export default function VenueAccommodationDashboard() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
+
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
-      if (userData.id) {
-        fetchVendorPackages(userData.id);
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (Number.isFinite(vendorId) && vendorId > 0) {
+        fetchVendorPackages(vendorId);
+      } else {
+        router.push('/login');
       }
     } else {
-      // Redirect to login if not authenticated
       router.push('/login');
     }
   }, [router]);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) {
+      setEditingPackageId(null);
+      return;
+    }
+
+    const loadPackageForEdit = async () => {
+      try {
+        const data = await apiFetch<any>(`/offerings/${editId}`);
+        setEditingPackageId(editId);
+        setActiveCategory(
+          data.category === 'hotel-room' || data.category === 'hotel-rooms'
+            ? 'hotel-rooms'
+            : data.category === 'banquet-hall' || data.category === 'banquet-halls'
+            ? 'banquet-halls'
+            : 'outdoor-venues'
+        );
+        setPackageCategory(data.category || 'hotel-room');
+        setSelectedFacilities(Array.isArray(data.facilities) ? data.facilities : []);
+        setSelectedRoomType(data.roomType || '');
+        setNewPackage({
+          title: data.name || '',
+          pricePerDay: String(data.price || ''),
+          facilities: data.description || '',
+          stock: data.stock ? String(data.stock) : '',
+          discount: data.discount || '',
+          discountType: data.discountType || '',
+          photos: [],
+        });
+        setToast({
+          message: 'Draft package loaded for editing. Update and save when ready.',
+          type: 'success',
+        });
+      } catch (error) {
+        console.error('Failed to load package for edit', error);
+        setToast({
+          message: 'Unable to load this package for editing.',
+          type: 'error',
+        });
+      }
+    };
+
+    loadPackageForEdit();
+  }, [searchParams]);
 
   useEffect(() => {
     setPackageCategory(
@@ -184,8 +241,9 @@ export default function VenueAccommodationDashboard() {
 
     try {
       console.log('Submitting package payload:', JSON.stringify(payload, null, 2));
-      const createdPackage = await apiFetch<any>('/offerings', {
-        method: 'POST',
+      const requestPath = editingPackageId ? `/offerings/${editingPackageId}` : '/offerings';
+      const createdPackage = await apiFetch<any>(requestPath, {
+        method: editingPackageId ? 'PUT' : 'POST',
         body: JSON.stringify(payload),
       });
 
@@ -216,8 +274,11 @@ export default function VenueAccommodationDashboard() {
       setSelectedRoomType('');
       setPackageCategory(activeCategory);
       
+      setEditingPackageId(null);
       setToast({
-        message: isDraft ? 'Package saved as draft successfully! 📋' : 'Package posted successfully! 🎉',
+        message: editingPackageId
+          ? (isDraft ? 'Draft updated successfully! 📋' : 'Package published successfully! 🎉')
+          : (isDraft ? 'Package saved as draft successfully! 📋' : 'Package posted successfully! 🎉'),
         type: 'success',
       });
     } catch (err) {
@@ -245,10 +306,10 @@ export default function VenueAccommodationDashboard() {
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              C
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Cinderella Hotel</h2>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
               <p className="text-xs text-gray-500">venue and accommodation</p>
             </div>
           </div>
@@ -258,6 +319,7 @@ export default function VenueAccommodationDashboard() {
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
             <button 
+              onClick={() => router.push('/dashboard/venue-accommodation/overview')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaChartBar /> Overview
@@ -275,6 +337,7 @@ export default function VenueAccommodationDashboard() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/venue-accommodation/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -289,7 +352,7 @@ export default function VenueAccommodationDashboard() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -389,7 +452,7 @@ export default function VenueAccommodationDashboard() {
                 <span>/</span>
                 <span className="font-semibold" style={{color: '#755A7B'}}>add new package</span>
               </div>
-              <h2 className="text-xl md:text-2xl font-bold text-gray-800">Add New Package</h2>
+              <h2 className="text-xl md:text-2xl font-bold text-gray-800">{editingPackageId ? 'Edit Draft Package' : 'Add New Package'}</h2>
             </div>
             <div className="flex gap-3">
               <button 
@@ -397,14 +460,14 @@ export default function VenueAccommodationDashboard() {
                 className="px-4 md:px-6 py-2.5 border-2 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm md:text-base"
                 style={{borderColor: '#e5e7eb'}}
               >
-                <FaFileInvoice /> Save Draft
+                <FaFileInvoice /> {editingPackageId ? 'Update Draft' : 'Save Draft'}
               </button>
               <button 
                 onClick={(e) => handleSubmitPackage(e, false)}
                 className="px-4 md:px-6 py-2.5 rounded-lg font-medium text-white hover:opacity-90 transition-opacity flex items-center gap-2 text-sm md:text-base"
                 style={{backgroundColor: '#755A7B'}}
               >
-                ✓ Add Package
+                {editingPackageId ? '✓ Publish Package' : '✓ Add Package'}
               </button>
             </div>
           </div>

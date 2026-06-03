@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaTrash, FaMinus, FaPlus } from 'react-icons/fa';
+import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 
 interface CartItem {
   id: string;
@@ -19,7 +20,7 @@ interface CartItem {
 export default function Cart() {
   const router = useRouter();
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
-  const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [user, setUser] = useState<{id?: string | number; name: string; email: string; role?: string} | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [subtotal, setSubtotal] = useState(0);
   const [tax, setTax] = useState(0);
@@ -46,6 +47,8 @@ export default function Cart() {
       calculateTotals(items);
     }
   }, []);
+
+  const getUserBudgetKeys = () => getBudgetStorageKeys(user);
 
   const calculateTotals = (items: CartItem[]) => {
     const sub = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -97,11 +100,11 @@ export default function Cart() {
       quantity: item.quantity
     }));
 
-    const existingBudget = localStorage.getItem('budgetItems');
-    const currentBudget = existingBudget ? JSON.parse(existingBudget) : [];
+    const budgetKeys = getUserBudgetKeys();
+    const currentBudget = safeParseArray<any>(localStorage.getItem(budgetKeys.budgetItems));
     const updatedBudget = [...currentBudget, ...budgetItems];
     
-    localStorage.setItem('budgetItems', JSON.stringify(updatedBudget));
+    localStorage.setItem(budgetKeys.budgetItems, JSON.stringify(updatedBudget));
     alert('Cart items added to Budget Calculator!');
     router.push('/budget-calculator');
   };

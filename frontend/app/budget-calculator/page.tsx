@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaTrash } from 'react-icons/fa';
+import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 
 interface BudgetItem {
   id: string;
@@ -16,12 +17,11 @@ interface BudgetItem {
 export default function BudgetCalculator() {
   const router = useRouter();
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
-  const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [user, setUser] = useState<{id?: string | number; name: string; email: string; role?: string} | null>(null);
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
   const [totalBudget, setTotalBudget] = useState(0);
 
   useEffect(() => {
-    // Load user from localStorage
     const userStr = localStorage.getItem('user');
     if (userStr) {
       const userData = JSON.parse(userStr);
@@ -32,32 +32,63 @@ export default function BudgetCalculator() {
         email: 'DinushaHerath@gmail.com'
       });
     }
-
-    // Load budget items from localStorage
-    const savedBudget = localStorage.getItem('budgetItems');
-    if (savedBudget) {
-      const items = JSON.parse(savedBudget);
-      setBudgetItems(items);
-      calculateTotal(items);
-    } else {
-      // Set dummy items for display
-      const dummyItems: BudgetItem[] = [
-        { id: '1', category: 'Venue & Accommodation', name: 'Grand Ballroom Package', price: 250000, quantity: 1 },
-        { id: '2', category: 'Photography & Videography', name: 'Premium Photo Package', price: 125000, quantity: 1 },
-        { id: '3', category: 'Fashion & Beauty', name: 'Bridal Makeup Deluxe', price: 45000, quantity: 1 },
-        { id: '4', category: 'Entertainment', name: 'Live Band - 4 Hours', price: 85000, quantity: 1 },
-        { id: '5', category: 'Cake Decoration', name: '3-Tier Wedding Cake', price: 45000, quantity: 1 },
-        { id: '6', category: 'Transportation', name: 'Luxury Car Package', price: 75000, quantity: 1 }
-      ];
-      setBudgetItems(dummyItems);
-      calculateTotal(dummyItems);
-    }
   }, []);
+
+  useEffect(() => {
+    const storageKeys = getBudgetStorageKeys(user);
+    const scopedBudgetItems = safeParseArray<any>(localStorage.getItem(storageKeys.budgetItems));
+    const scopedPackageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
+
+    const normalizedFromPackages = scopedPackageDetails.map((item, index) => ({
+      id: `pkg-${item.packageId || item.id || index}`,
+      category: item.category || item.vendorName || 'Added Package',
+      name: item.title || item.name || 'Wedding Package',
+      price: Number(item.price) || 0,
+      quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+    }));
+
+    const normalizedFromBudgetItems = scopedBudgetItems.map((item, index) => ({
+      id: item.id || `item-${item.packageId || index}`,
+      category: item.category || 'Budget Item',
+      name: item.name || item.title || 'Budget Item',
+      price: Number(item.price) || 0,
+      quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+    }));
+
+    const primaryItems = normalizedFromBudgetItems.length > 0
+      ? normalizedFromBudgetItems
+      : normalizedFromPackages;
+
+    const mergedItems = primaryItems.reduce((acc, item) => {
+      const existing = acc.find((entry) => entry.id === item.id);
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.price = item.price || existing.price;
+      } else {
+        acc.push(item);
+      }
+      return acc;
+    }, [] as BudgetItem[]);
+
+    setBudgetItems(mergedItems);
+    calculateTotal(mergedItems);
+
+    if (normalizedFromBudgetItems.length === 0 && normalizedFromPackages.length > 0) {
+      localStorage.setItem(storageKeys.budgetItems, JSON.stringify(mergedItems));
+    }
+  }, [user]);
 
   const calculateTotal = (items: BudgetItem[]) => {
     const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     setTotalBudget(total);
   };
+
+  const getScopedBudgetItems = () => {
+    const storageKeys = getBudgetStorageKeys(user);
+    return storageKeys;
+  };
+
+  const totalItemQuantity = budgetItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -69,7 +100,8 @@ export default function BudgetCalculator() {
     const updatedItems = budgetItems.filter(item => item.id !== id);
     setBudgetItems(updatedItems);
     calculateTotal(updatedItems);
-    localStorage.setItem('budgetItems', JSON.stringify(updatedItems));
+    const storageKeys = getScopedBudgetItems();
+    localStorage.setItem(storageKeys.budgetItems, JSON.stringify(updatedItems));
   };
 
   const handleUpdateQuantity = (id: string, newQuantity: number) => {
@@ -79,14 +111,17 @@ export default function BudgetCalculator() {
     );
     setBudgetItems(updatedItems);
     calculateTotal(updatedItems);
-    localStorage.setItem('budgetItems', JSON.stringify(updatedItems));
+    const storageKeys = getScopedBudgetItems();
+    localStorage.setItem(storageKeys.budgetItems, JSON.stringify(updatedItems));
   };
 
   const clearAllItems = () => {
     if (confirm('Are you sure you want to clear all budget items?')) {
       setBudgetItems([]);
       setTotalBudget(0);
-      localStorage.removeItem('budgetItems');
+      const storageKeys = getScopedBudgetItems();
+      localStorage.removeItem(storageKeys.budgetItems);
+      localStorage.removeItem(storageKeys.budgetPackageDetails);
     }
   };
 
@@ -340,7 +375,7 @@ export default function BudgetCalculator() {
               <div className="border-t-2 border-purple-200 pt-4 mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-lg font-semibold">Total Items:</span>
-                  <span className="text-lg font-semibold">{budgetItems.length}</span>
+                  <span className="text-lg font-semibold">{totalItemQuantity}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-2xl font-bold" style={{color: '#755A7B'}}>Total Budget:</span>
