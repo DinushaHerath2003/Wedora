@@ -2,11 +2,56 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { FaShoppingCart, FaCalculator, FaChevronDown } from "react-icons/fa";
+import { useEffect, useState } from "react";
+import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaEdit } from "react-icons/fa";
+
+type HomeUser = {
+  id?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  organizationName?: string;
+};
 
 export default function Home() {
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
+  const [user, setUser] = useState<HomeUser | null>(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: '', email: '' });
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const userData = JSON.parse(userStr) as HomeUser;
+      setUser(userData);
+      setProfileForm({
+        name: userData.name || '',
+        email: userData.email || '',
+      });
+    }
+  }, []);
+
+  const handleProfileSave = () => {
+    if (!user) return;
+
+    const updatedUser = {
+      ...user,
+      name: profileForm.name,
+      email: profileForm.email,
+    };
+
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setShowProfileEditor(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setShowProfileMenu(false);
+  };
 
   return (
     <div className="min-h-screen">
@@ -153,21 +198,123 @@ export default function Home() {
                   0
                 </span>
               </Link>
-              <Link
-                href="/login"
-                className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/signup"
-                className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
-              >
-                Sign Up
-              </Link>
+              {user ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileMenu((prev) => !prev)}
+                    className="flex items-center gap-3 rounded-full border border-white/70 px-3 py-2 text-white transition hover:bg-white/10"
+                  >
+                    <FaUserCircle className="text-2xl" />
+                    <div className="text-left leading-tight">
+                      <p className="text-sm font-semibold">{user.name || 'User'}</p>
+                      <p className="text-[11px] text-white/80 truncate max-w-36">{user.email}</p>
+                    </div>
+                  </button>
+
+                  {showProfileMenu && (
+                    <>
+                      <button
+                        className="fixed inset-0 z-40 cursor-default"
+                        aria-label="Close profile menu"
+                        onClick={() => setShowProfileMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white p-4 shadow-2xl z-50">
+                        <div className="mb-4 rounded-xl p-4" style={{ backgroundColor: 'rgba(117, 90, 123, 0.08)' }}>
+                          <p className="text-xs uppercase tracking-[0.2em] text-gray-500 mb-1">Signed in as</p>
+                          <p className="font-semibold text-gray-900">{user.name || 'User'}</p>
+                          <p className="text-sm text-gray-600 break-all">{user.email}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowProfileEditor(true);
+                            setShowProfileMenu(false);
+                          }}
+                          className="w-full flex items-center gap-2 rounded-lg px-4 py-3 text-left font-medium text-gray-700 hover:bg-gray-100"
+                        >
+                          <FaEdit /> Manage Profile
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="mt-2 w-full flex items-center gap-2 rounded-lg px-4 py-3 text-left font-medium text-red-600 hover:bg-red-50"
+                        >
+                          <FaSignOutAlt /> Logout
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
+                  >
+                    Sign Up
+                  </Link>
+                </>
+              )}
             </nav>
           </div>
         </header>
+
+        {showProfileEditor && user && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black/50 px-4" style={{ zIndex: 2000 }}>
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Profile</p>
+                  <h3 className="text-2xl font-bold text-gray-900">Manage your account</h3>
+                </div>
+                <button className="text-gray-500 hover:text-gray-700" onClick={() => setShowProfileEditor(false)}>×</button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                  <input
+                    type="text"
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2"
+                    style={{ focusRingColor: '#755A7B' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2"
+                    style={{ focusRingColor: '#755A7B' }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowProfileEditor(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleProfileSave}
+                  className="rounded-lg px-4 py-2 font-medium text-white"
+                  style={{ backgroundColor: '#755A7B' }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Hero Content */}
         <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">

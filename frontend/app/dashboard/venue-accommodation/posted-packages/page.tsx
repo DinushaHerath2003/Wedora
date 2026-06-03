@@ -22,7 +22,7 @@ interface Package {
 }
 
 interface VendorUser {
-  id?: number;
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -36,6 +36,9 @@ export default function PostedPackagesPage() {
   const [toast, setToast] = useState<ToastProps | null>(null);
 
   const [packages, setPackages] = useState<Package[]>([]);
+
+  const organizationLabel = user?.organizationName || user?.name || 'Venue Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -69,8 +72,17 @@ export default function PostedPackagesPage() {
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
-      console.log('Fetching packages for vendor:', userData.id);
-      fetchVendorPackages(userData.id);
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (Number.isFinite(vendorId) && vendorId > 0) {
+        console.log('Fetching packages for vendor:', vendorId);
+        fetchVendorPackages(vendorId);
+      } else {
+        router.push('/login');
+      }
     } else {
       const demoUser = {
         id: 0,
@@ -173,10 +185,10 @@ export default function PostedPackagesPage() {
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              C
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Cinderella Hotel</h2>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
               <p className="text-xs text-gray-500">venue and accommodation</p>
             </div>
           </div>
@@ -203,6 +215,7 @@ export default function PostedPackagesPage() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/venue-accommodation/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -217,7 +230,7 @@ export default function PostedPackagesPage() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>

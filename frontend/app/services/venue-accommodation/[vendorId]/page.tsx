@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { apiFetch } from '@/lib/api';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
@@ -53,6 +54,7 @@ export default function VendorDetailPage() {
   const [budgetPackages, setBudgetPackages] = useState<string[]>([]);
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Mock vendor data
   const mockVendor: Vendor = {
@@ -121,7 +123,7 @@ export default function VendorDetailPage() {
   ];
 
   const [vendor, setVendor] = useState<Vendor>(mockVendor);
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const [packages, setPackages] = useState<Package[]>([]);
 
   useEffect(() => {
     // Load saved packages from localStorage
@@ -149,6 +151,101 @@ export default function VendorDetailPage() {
       });
     }
   }, []);
+
+  // Fetch vendor data and packages from API
+  useEffect(() => {
+    const fetchVendorData = async () => {
+      try {
+        setIsLoading(true);
+        const vendorIdNum = Number(vendorId);
+        const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorIdNum}`);
+        
+        if (offerings && offerings.length > 0) {
+          const firstOffering = offerings[0];
+          const vendorData = firstOffering.vendor;
+          
+          // Build vendor object from API data
+          const categories = new Set<VenueCategory>();
+          const allFacilities = new Set<string>();
+          
+          offerings.forEach((offering) => {
+            const category = offering.category || 'hotel-room';
+            let normalized: VenueCategory = 'hotel-rooms';
+            if (category === 'hotel-rooms' || category === 'hotel-room') {
+              normalized = 'hotel-rooms';
+            } else if (category === 'banquet-halls' || category === 'banquet-hall') {
+              normalized = 'banquet-halls';
+            } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
+              normalized = 'outdoor-venues';
+            }
+            categories.add(normalized);
+            
+            if (offering.facilities && Array.isArray(offering.facilities)) {
+              offering.facilities.forEach((f: string) => allFacilities.add(f));
+            }
+          });
+          
+          const apiVendor: Vendor = {
+            id: vendorIdNum.toString(),
+            name: vendorData?.organizationName || 'Venue',
+            organizationName: vendorData?.organizationName || 'Venue',
+            category: Array.from(categories),
+            location: vendorData?.location || 'Not specified',
+            rating: 4.6,
+            reviewCount: Math.floor(Math.random() * 200) + 50,
+            image: '/ven1.png',
+            about: `Premium venue and accommodation services in ${vendorData?.location || 'Sri Lanka'}. We specialize in creating exceptional wedding experiences.`,
+            facilities: Array.from(allFacilities).length > 0 ? Array.from(allFacilities) : ['WiFi', 'AC', 'Parking', 'Catering']
+          };
+          
+          setVendor(apiVendor);
+          
+          // Build packages from offerings
+          const apiPackages: Package[] = offerings
+            .filter((offering) => !offering.isDraft)
+            .map((offering) => {
+              const category = offering.category || 'hotel-room';
+              let normalizedCat: VenueCategory = 'hotel-rooms';
+              if (category === 'hotel-rooms' || category === 'hotel-room') {
+                normalizedCat = 'hotel-rooms';
+              } else if (category === 'banquet-halls' || category === 'banquet-hall') {
+                normalizedCat = 'banquet-halls';
+              } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
+                normalizedCat = 'outdoor-venues';
+              }
+              
+              return {
+                id: offering.id.toString(),
+                vendorId: vendorIdNum.toString(),
+                category: normalizedCat,
+                title: offering.name || 'Package',
+                pricePerDay: Number(offering.price) || 0,
+                facilities: offering.facilities || [],
+                photos: offering.images && offering.images.length > 0 ? offering.images : ['/ven1.png'],
+                stock: offering.stock,
+                discount: offering.discount,
+                discountType: offering.discountType,
+                description: offering.description
+              };
+            });
+          
+          setPackages(apiPackages);
+        } else {
+          setPackages([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch vendor data:', error);
+        // Keep mock data as fallback
+        setPackages(mockPackages);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (vendorId) {
+      fetchVendorData();
+    }
+  }, [vendorId]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -219,6 +316,17 @@ export default function VendorDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isLoading ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="inline-block mb-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{borderColor: '#755A7B'}}></div>
+            </div>
+            <p className="text-gray-600">Loading venue details...</p>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <header className="shadow-sm sticky top-0 z-50" style={{backgroundColor: '#755A7B'}}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
@@ -478,11 +586,20 @@ export default function VendorDetailPage() {
                 </div>
 
                 {/* Package Info */}
-                <div className="p-5">
+                <div className="p-5 flex flex-col h-full">
                   <h3 className="text-lg font-bold text-gray-800 mb-2">{pkg.title}</h3>
                   
                   {pkg.description && (
-                    <p className="text-sm text-gray-600 mb-3">{pkg.description}</p>
+                    <p
+                      className="text-sm text-gray-600 mb-3 overflow-hidden"
+                      style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {pkg.description}
+                    </p>
                   )}
 
                   <div className="mb-3">
@@ -535,6 +652,13 @@ export default function VendorDetailPage() {
                     </div>
 
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => router.push(`/dashboard/venue-accommodation/posted-packages/${pkg.id}`)}
+                        className="flex-1 px-4 py-2 rounded-lg font-medium border-2 transition-all hover:shadow-sm"
+                        style={{ borderColor: '#755A7B', color: '#755A7B', backgroundColor: 'white' }}
+                      >
+                        See More
+                      </button>
                       <button
                         onClick={(e) => addToBudgetCalculator(pkg, e)}
                         disabled={isInBudget}
@@ -624,6 +748,8 @@ export default function VendorDetailPage() {
           </div>
         </div>
       </footer>
+      </>
+      )}
     </div>
   );
 }

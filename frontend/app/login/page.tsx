@@ -85,7 +85,7 @@ export default function LoginPage() {
 
         switch (userResponse.user.role) {
           case 'user':
-            router.push('/dashboard/user');
+            router.push('/');
             break;
           case 'admin':
             router.push('/dashboard/admin');
