@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
@@ -42,6 +43,25 @@ interface SavedPackage {
   price: number;
   image: string;
   vendorName: string;
+}
+
+interface BudgetPackageDetail {
+  packageId: string;
+  vendorId: string;
+  category?: string;
+  title: string;
+  price: number;
+  image: string;
+  vendorName: string;
+  quantity?: number;
+}
+
+interface BudgetItem {
+  id: string;
+  category: string;
+  name: string;
+  price: number;
+  quantity: number;
 }
 
 export default function VendorDetailPage() {
@@ -151,6 +171,8 @@ export default function VendorDetailPage() {
       });
     }
   }, []);
+
+  const getUserBudgetKeys = () => getBudgetStorageKeys(user);
 
   // Fetch vendor data and packages from API
   useEffect(() => {
@@ -280,23 +302,36 @@ export default function VendorDetailPage() {
 
   const addToBudgetCalculator = (pkg: Package, e: React.MouseEvent) => {
     e.stopPropagation();
+    const budgetKeys = getUserBudgetKeys();
     
     if (!budgetPackages.includes(pkg.id)) {
       const newBudgetPackages = [...budgetPackages, pkg.id];
       setBudgetPackages(newBudgetPackages);
-      localStorage.setItem('budgetPackages', JSON.stringify(newBudgetPackages));
+      localStorage.setItem(budgetKeys.budgetPackages, JSON.stringify(newBudgetPackages));
+
+      const canonicalBudgetItems = safeParseArray<BudgetItem>(localStorage.getItem(budgetKeys.budgetItems));
+      canonicalBudgetItems.push({
+        id: `pkg-${pkg.id}`,
+        category: pkg.category,
+        name: `${vendor.organizationName} - ${pkg.title}`,
+        price: pkg.pricePerDay,
+        quantity: 1,
+      });
+      localStorage.setItem(budgetKeys.budgetItems, JSON.stringify(canonicalBudgetItems));
 
       // Save package details for budget calculator
-      const budgetPackageDetails: SavedPackage[] = JSON.parse(localStorage.getItem('budgetPackageDetails') || '[]');
+      const budgetPackageDetails: BudgetPackageDetail[] = safeParseArray<BudgetPackageDetail>(localStorage.getItem(budgetKeys.budgetPackageDetails));
       budgetPackageDetails.push({
         packageId: pkg.id,
         vendorId: vendor.id,
+        category: pkg.category,
         title: pkg.title,
         price: pkg.pricePerDay,
         image: pkg.photos[0],
-        vendorName: vendor.organizationName
+        vendorName: vendor.organizationName,
+        quantity: 1,
       });
-      localStorage.setItem('budgetPackageDetails', JSON.stringify(budgetPackageDetails));
+      localStorage.setItem(budgetKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
 
       alert('Package added to budget calculator!');
     } else {

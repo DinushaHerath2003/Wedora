@@ -389,6 +389,7 @@ export default function PlaceBookingPage() {
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
             <button 
+              onClick={() => router.push('/dashboard/venue-accommodation/overview')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaChartBar /> Overview
