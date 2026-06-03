@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 import Toast, { ToastProps } from '@/components/Toast';
 import { FaArrowLeft, FaHome, FaPhone, FaEnvelope, FaStar, FaHeart, FaShare, FaCheckCircle, FaClock, FaMoneyBillWave, FaCalculator, FaCalendarAlt } from 'react-icons/fa';
 
@@ -24,11 +25,19 @@ interface PackageDetail {
 }
 
 interface VendorUser {
-  id?: number;
+  id?: number | string;
   name: string;
   email: string;
   role: string;
   organizationName?: string;
+}
+
+interface BudgetItem {
+  id: string;
+  category: string;
+  name: string;
+  price: number;
+  quantity: number;
 }
 
 export default function PackageDetailPage() {
@@ -55,11 +64,11 @@ export default function PackageDetailPage() {
   }, [router]);
 
   useEffect(() => {
-    const budget = localStorage.getItem('budgetPackages');
-    if (budget) {
-      setBudgetPackages(JSON.parse(budget));
-    }
-  }, []);
+    const storageKeys = getBudgetStorageKeys(user);
+    const scopedBudget = safeParseArray<string>(localStorage.getItem(storageKeys.budgetPackages));
+    const legacyBudget = safeParseArray<string>(localStorage.getItem('budgetPackages'));
+    setBudgetPackages([...scopedBudget, ...legacyBudget]);
+  }, [user]);
 
   useEffect(() => {
     const fetchPackageDetail = async () => {
@@ -98,22 +107,35 @@ export default function PackageDetailPage() {
 
   const handleAddToBudgetCalculator = () => {
     if (!packageData) return;
+    const storageKeys = getBudgetStorageKeys(user);
 
     if (!budgetPackages.includes(packageData.id.toString())) {
       const updatedBudgetPackages = [...budgetPackages, packageData.id.toString()];
       setBudgetPackages(updatedBudgetPackages);
-      localStorage.setItem('budgetPackages', JSON.stringify(updatedBudgetPackages));
+      localStorage.setItem(storageKeys.budgetPackages, JSON.stringify(updatedBudgetPackages));
 
-      const budgetPackageDetails = JSON.parse(localStorage.getItem('budgetPackageDetails') || '[]');
+      const canonicalBudgetItems = safeParseArray<BudgetItem>(localStorage.getItem(storageKeys.budgetItems));
+      canonicalBudgetItems.push({
+        id: `pkg-${packageData.id}`,
+        category: packageData.category,
+        name: packageData.name,
+        price: packageData.price,
+        quantity: 1,
+      });
+      localStorage.setItem(storageKeys.budgetItems, JSON.stringify(canonicalBudgetItems));
+
+      const budgetPackageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
       budgetPackageDetails.push({
         packageId: packageData.id.toString(),
         vendorId: packageData.vendorId.toString(),
+        category: packageData.category,
         title: packageData.name,
         price: packageData.price,
         image: packageData.images[0] || '/pack1.png',
         vendorName: 'Venue Accommodation',
+        quantity: 1,
       });
-      localStorage.setItem('budgetPackageDetails', JSON.stringify(budgetPackageDetails));
+      localStorage.setItem(storageKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
 
       setToast({
         message: 'Package added to budget calculator.',
