@@ -47,7 +47,9 @@ export function normalizeCeremonialCategory(category: string | undefined): Cerem
 }
 
 export function isCeremonialCategory(category: string | undefined): boolean {
-  return CEREMONIAL_CATEGORY_IDS.includes(normalizeCeremonialCategory(category));
+  return Boolean(
+    category && CEREMONIAL_CATEGORY_IDS.includes(category as CeremonialCategory),
+  );
 }
 
 export function mapOfferingToCeremonialPackage(offering: {

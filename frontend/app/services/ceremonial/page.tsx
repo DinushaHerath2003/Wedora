@@ -4,8 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaStar, FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
-
-type CeremonialCategory = 'astrologers' | 'priests' | 'registrars' | 'traditional-services';
+import { apiFetch } from '@/lib/api';
+import {
+  CeremonialCategory,
+  CEREMONIAL_CATEGORY_LABELS,
+  isCeremonialCategory,
+  normalizeCeremonialCategory,
+  resolveOfferingImage,
+} from '@/lib/ceremonial-dashboard';
 
 interface Vendor {
   id: string;
@@ -31,70 +37,9 @@ export default function CeremonialServices() {
   const [showFilters, setShowFilters] = useState(false);
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
-
-  // Mock vendor data - replace with actual data from your backend
-  const mockVendors: Vendor[] = [
-    {
-      id: '1',
-      name: 'Sacred Ceremonies Lanka',
-      organizationName: 'Sacred Ceremonies Lanka',
-      category: ['priests', 'traditional-services'],
-      location: 'Colombo, Sri Lanka',
-      rating: 4.9,
-      reviewCount: 145,
-      minPrice: 15000,
-      maxPrice: 85000,
-      image: '/ven1.png',
-      packageCount: 6,
-      services: ['Poruwa Ceremony', 'Buddhist Rituals', 'Hindu Rituals', 'Traditional Music']
-    },
-    {
-      id: '2',
-      name: 'Astro Weddings',
-      organizationName: 'Astro Weddings',
-      category: ['astrologers'],
-      location: 'Kandy, Sri Lanka',
-      rating: 4.8,
-      reviewCount: 98,
-      minPrice: 10000,
-      maxPrice: 50000,
-      image: '/ven2.png',
-      packageCount: 4,
-      services: ['Horoscope Matching', 'Auspicious Time Selection', 'Planetary Consultation']
-    },
-    {
-      id: '3',
-      name: 'Legal Marriage Services',
-      organizationName: 'Legal Marriage Services',
-      category: ['registrars'],
-      location: 'Galle, Sri Lanka',
-      rating: 4.7,
-      reviewCount: 112,
-      minPrice: 8000,
-      maxPrice: 25000,
-      image: '/ven3.png',
-      packageCount: 3,
-      services: ['Marriage Registration', 'Legal Documentation', 'Certificate Processing']
-    },
-    {
-      id: '4',
-      name: 'Traditional Wedding Specialists',
-      organizationName: 'Traditional Wedding Specialists',
-      category: ['traditional-services', 'priests'],
-      location: 'Negombo, Sri Lanka',
-      rating: 4.9,
-      reviewCount: 167,
-      minPrice: 20000,
-      maxPrice: 95000,
-      image: '/ven1.png',
-      packageCount: 8,
-      services: ['Poruwa Ceremony', 'Traditional Music', 'Hindu Rituals', 'Buddhist Rituals']
-    }
-  ];
-
-  const [vendors, setVendors] = useState<Vendor[]>(mockVendors);
-
-  const servicesList = ['Poruwa Ceremony', 'Buddhist Rituals', 'Hindu Rituals', 'Traditional Music', 'Horoscope Matching', 'Auspicious Time Selection', 'Marriage Registration', 'Legal Documentation'];
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [servicesList, setServicesList] = useState<string[]>([]);
 
   useEffect(() => {
     // Load user from localStorage
@@ -109,7 +54,78 @@ export default function CeremonialServices() {
         email: 'DinushaHerath@gmail.com'
       });
     }
+    fetchCeremonialOfferings();
   }, []);
+
+  const fetchCeremonialOfferings = async () => {
+    try {
+      setLoading(true);
+      const offerings = await apiFetch<any[]>('/offerings');
+      const vendorMap = new Map<number, any>();
+      const allServices = new Set<string>();
+
+      offerings.forEach((offering) => {
+        if (offering.isDraft || !offering.vendor || !isCeremonialCategory(offering.category)) {
+          return;
+        }
+
+        const vendor = offering.vendor;
+        const vendorId = vendor.id;
+        const category = normalizeCeremonialCategory(offering.category);
+
+        if (!vendorMap.has(vendorId)) {
+          vendorMap.set(vendorId, {
+            id: vendorId.toString(),
+            name: vendor.organizationName,
+            organizationName: vendor.organizationName,
+            location: vendor.location || 'Not specified',
+            categories: new Set<CeremonialCategory>(),
+            offerings: [],
+            services: new Set<string>(),
+            image: resolveOfferingImage(offering.images, '/poruwa.png'),
+          });
+        }
+
+        const vendorData = vendorMap.get(vendorId)!;
+        vendorData.categories.add(category);
+        vendorData.offerings.push(offering);
+
+        if (Array.isArray(offering.facilities)) {
+          offering.facilities.forEach((service: string) => {
+            vendorData.services.add(service);
+            allServices.add(service);
+          });
+        }
+      });
+
+      const displayVendors: Vendor[] = Array.from(vendorMap.values()).map((vendorData) => {
+        const prices = vendorData.offerings.map((offering: any) => Number(offering.price) || 0);
+
+        return {
+          id: vendorData.id,
+          name: vendorData.name,
+          organizationName: vendorData.organizationName,
+          category: Array.from(vendorData.categories),
+          location: vendorData.location,
+          rating: 4.7,
+          reviewCount: Math.floor(Math.random() * 200) + 50,
+          minPrice: Math.min(...prices),
+          maxPrice: Math.max(...prices),
+          image: vendorData.image,
+          packageCount: vendorData.offerings.length,
+          services: Array.from(vendorData.services),
+        };
+      });
+
+      setVendors(displayVendors);
+      setServicesList(Array.from(allServices));
+    } catch (error) {
+      console.error('Failed to fetch ceremonial offerings:', error);
+      setVendors([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -318,51 +334,40 @@ export default function CeremonialServices() {
               }`}
               style={selectedCategory === 'all' ? {backgroundColor: '#755A7B'} : {}}
             >
-              All
+              All Ceremonial
             </button>
             <button
-              onClick={() => setSelectedCategory('astrologers')}
+              onClick={() => setSelectedCategory('poruwa-ceremony')}
               className={`px-6 py-2 rounded-full font-medium transition-colors ${
-                selectedCategory === 'astrologers'
+                selectedCategory === 'poruwa-ceremony'
                   ? 'text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
-              style={selectedCategory === 'astrologers' ? {backgroundColor: '#755A7B'} : {}}
+              style={selectedCategory === 'poruwa-ceremony' ? {backgroundColor: '#755A7B'} : {}}
             >
-              Astrologers
+              {CEREMONIAL_CATEGORY_LABELS['poruwa-ceremony']}
             </button>
             <button
-              onClick={() => setSelectedCategory('priests')}
+              onClick={() => setSelectedCategory('religious-services')}
               className={`px-6 py-2 rounded-full font-medium transition-colors ${
-                selectedCategory === 'priests'
+                selectedCategory === 'religious-services'
                   ? 'text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
-              style={selectedCategory === 'priests' ? {backgroundColor: '#755A7B'} : {}}
+              style={selectedCategory === 'religious-services' ? {backgroundColor: '#755A7B'} : {}}
             >
-              Priests
+              {CEREMONIAL_CATEGORY_LABELS['religious-services']}
             </button>
             <button
-              onClick={() => setSelectedCategory('registrars')}
+              onClick={() => setSelectedCategory('cultural-events')}
               className={`px-6 py-2 rounded-full font-medium transition-colors ${
-                selectedCategory === 'registrars'
+                selectedCategory === 'cultural-events'
                   ? 'text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
-              style={selectedCategory === 'registrars' ? {backgroundColor: '#755A7B'} : {}}
+              style={selectedCategory === 'cultural-events' ? {backgroundColor: '#755A7B'} : {}}
             >
-              Registrars
-            </button>
-            <button
-              onClick={() => setSelectedCategory('traditional-services')}
-              className={`px-6 py-2 rounded-full font-medium transition-colors ${
-                selectedCategory === 'traditional-services'
-                  ? 'text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-              style={selectedCategory === 'traditional-services' ? {backgroundColor: '#755A7B'} : {}}
-            >
-              Traditional Services
+              {CEREMONIAL_CATEGORY_LABELS['cultural-events']}
             </button>
           </div>
 
@@ -428,7 +433,7 @@ export default function CeremonialServices() {
         {/* Results Count */}
         <div className="mb-6">
           <p className="text-gray-600">
-            Showing <span className="font-semibold">{filteredVendors.length}</span> {filteredVendors.length === 1 ? 'vendor' : 'vendors'}
+            {loading ? 'Loading ceremonial vendors...' : <>Showing <span className="font-semibold">{filteredVendors.length}</span> {filteredVendors.length === 1 ? 'vendor' : 'vendors'}</>}
           </p>
         </div>
 

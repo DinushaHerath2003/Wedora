@@ -1,8 +1,12 @@
-import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { VendorAuthService } from './vendor-auth.service';
 import { CreateVendorDto, UpdateVendorDto } from './dto/vendor.dto';
 import { VendorSignupDto, VendorLoginDto } from './dto/vendor-auth.dto';
+import { Roles } from '../common/auth/roles.decorator';
+import { UserRole } from '../common/constants';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('vendors')
 export class VendorsController {
@@ -22,6 +26,8 @@ export class VendorsController {
   }
 
   @Post()
+  @Roles(UserRole.VENDOR)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   create(@Body() createVendorDto: CreateVendorDto) {
     return this.vendorsService.create(createVendorDto);
   }
@@ -37,11 +43,15 @@ export class VendorsController {
   }
 
   @Put(':id')
+  @Roles(UserRole.VENDOR)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   update(@Param('id') id: string, @Body() updateVendorDto: UpdateVendorDto) {
     return this.vendorsService.update(+id, updateVendorDto);
   }
 
   @Delete(':id')
+  @Roles(UserRole.VENDOR)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   remove(@Param('id') id: string) {
     return this.vendorsService.remove(+id);
   }

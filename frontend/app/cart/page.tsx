@@ -5,16 +5,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaTrash, FaMinus, FaPlus } from 'react-icons/fa';
 import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
+import { CartItem, getCartItems, saveCartItems } from '@/lib/cart-storage';
 
-interface CartItem {
+interface BudgetCalculatorItem {
   id: string;
-  vendorId: string;
-  vendorName: string;
-  packageName: string;
   category: string;
+  name: string;
   price: number;
   quantity: number;
-  features: string[];
 }
 
 export default function Cart() {
@@ -25,6 +23,14 @@ export default function Cart() {
   const [subtotal, setSubtotal] = useState(0);
   const [tax, setTax] = useState(0);
   const [total, setTotal] = useState(0);
+
+  const calculateTotals = (items: CartItem[]) => {
+    const sub = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const taxAmount = sub * 0.05; // 5% tax
+    setSubtotal(sub);
+    setTax(taxAmount);
+    setTotal(sub + taxAmount);
+  };
 
   useEffect(() => {
     // Load user from localStorage
@@ -39,24 +45,12 @@ export default function Cart() {
       });
     }
 
-    // Load cart items from localStorage
-    const savedCart = localStorage.getItem('cartItems');
-    if (savedCart) {
-      const items = JSON.parse(savedCart);
-      setCartItems(items);
-      calculateTotals(items);
-    }
+    const items = getCartItems();
+    setCartItems(items);
+    calculateTotals(items);
   }, []);
 
   const getUserBudgetKeys = () => getBudgetStorageKeys(user);
-
-  const calculateTotals = (items: CartItem[]) => {
-    const sub = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const taxAmount = sub * 0.05; // 5% tax
-    setSubtotal(sub);
-    setTax(taxAmount);
-    setTotal(sub + taxAmount);
-  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -68,7 +62,7 @@ export default function Cart() {
     const updatedItems = cartItems.filter(item => item.id !== id);
     setCartItems(updatedItems);
     calculateTotals(updatedItems);
-    localStorage.setItem('cartItems', JSON.stringify(updatedItems));
+    saveCartItems(updatedItems);
   };
 
   const handleUpdateQuantity = (id: string, newQuantity: number) => {
@@ -78,7 +72,7 @@ export default function Cart() {
     );
     setCartItems(updatedItems);
     calculateTotals(updatedItems);
-    localStorage.setItem('cartItems', JSON.stringify(updatedItems));
+    saveCartItems(updatedItems);
   };
 
   const clearCart = () => {
@@ -101,7 +95,7 @@ export default function Cart() {
     }));
 
     const budgetKeys = getUserBudgetKeys();
-    const currentBudget = safeParseArray<any>(localStorage.getItem(budgetKeys.budgetItems));
+    const currentBudget = safeParseArray<BudgetCalculatorItem>(localStorage.getItem(budgetKeys.budgetItems));
     const updatedBudget = [...currentBudget, ...budgetItems];
     
     localStorage.setItem(budgetKeys.budgetItems, JSON.stringify(updatedBudget));
@@ -287,7 +281,7 @@ export default function Cart() {
                         {/* Image Section */}
                         <div className="relative h-48 md:h-auto md:col-span-1">
                           <img 
-                            src="/ven1.png" 
+                            src={item.image || '/ven1.png'} 
                             alt={item.packageName}
                             className="w-full h-full object-cover"
                           />

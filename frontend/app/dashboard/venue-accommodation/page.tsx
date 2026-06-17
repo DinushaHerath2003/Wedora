@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
 import Toast, { ToastProps } from '@/components/Toast';
 import DashboardNavbar from '@/components/DashboardNavbar';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus, FaBuilding, FaHotel, FaTree } from 'react-icons/fa';
@@ -41,6 +42,7 @@ export default function VenueAccommodationDashboard() {
   const [selectedFacilities, setSelectedFacilities] = useState<string[]>([]);
   const [selectedRoomType, setSelectedRoomType] = useState<string>('');
   const [toast, setToast] = useState<ToastProps | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [newPackage, setNewPackage] = useState({
     title: '',
     pricePerDay: '',
@@ -48,7 +50,7 @@ export default function VenueAccommodationDashboard() {
     stock: '',
     discount: '',
     discountType: '',
-    photos: [] as File[],
+    photos: [] as string[],
   });
 
   const organizationLabel = user?.organizationName || user?.name || 'Venue Vendor';
@@ -128,7 +130,7 @@ export default function VenueAccommodationDashboard() {
           stock: data.stock ? String(data.stock) : '',
           discount: data.discount || '',
           discountType: data.discountType || '',
-          photos: [],
+          photos: Array.isArray(data.images) ? data.images : [],
         });
         setToast({
           message: 'Draft package loaded for editing. Update and save when ready.',
@@ -184,17 +186,47 @@ export default function VenueAccommodationDashboard() {
     router.push('/');
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setNewPackage({
-        ...newPackage,
-        photos: Array.from(e.target.files),
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    try {
+      setUploadingImages(true);
+      const uploadedUrls = await Promise.all(
+        files.map((file) => uploadImageToCloudinary(file)),
+      );
+
+      setNewPackage((prev) => ({
+        ...prev,
+        photos: [...prev.photos, ...uploadedUrls],
+      }));
+      setToast({
+        message: 'Images uploaded successfully!',
+        type: 'success',
       });
+    } catch (error) {
+      setToast({
+        message: error instanceof Error ? error.message : 'Image upload failed',
+        type: 'error',
+      });
+    } finally {
+      setUploadingImages(false);
+      e.target.value = '';
     }
   };
 
   const handleSubmitPackage = async (e?: React.FormEvent, isDraft = false) => {
     if (e) e.preventDefault();
+
+    if (uploadingImages) {
+      setToast({
+        message: 'Please wait until image uploads are complete.',
+        type: 'error',
+      });
+      return;
+    }
+
     const vendorId = Number((user as any).id);
 
     if (!user || !('id' in user) || Number.isNaN(vendorId) || vendorId <= 0) {
@@ -234,7 +266,7 @@ export default function VenueAccommodationDashboard() {
       stock: newPackage.stock ? parseInt(newPackage.stock) : undefined,
       discount: newPackage.discount || undefined,
       discountType: newPackage.discountType || undefined,
-      images: newPackage.photos.map((file) => file.name),
+      images: newPackage.photos,
       vendorId,
       isDraft,
     };
@@ -457,6 +489,7 @@ export default function VenueAccommodationDashboard() {
             <div className="flex gap-3">
               <button 
                 onClick={(e) => handleSubmitPackage(e, true)}
+                disabled={uploadingImages}
                 className="px-4 md:px-6 py-2.5 border-2 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm md:text-base"
                 style={{borderColor: '#e5e7eb'}}
               >
@@ -464,6 +497,7 @@ export default function VenueAccommodationDashboard() {
               </button>
               <button 
                 onClick={(e) => handleSubmitPackage(e, false)}
+                disabled={uploadingImages}
                 className="px-4 md:px-6 py-2.5 rounded-lg font-medium text-white hover:opacity-90 transition-opacity flex items-center gap-2 text-sm md:text-base"
                 style={{backgroundColor: '#755A7B'}}
               >
@@ -642,7 +676,7 @@ export default function VenueAccommodationDashboard() {
                   <div className="aspect-square bg-gray-50 rounded-lg mb-4 overflow-hidden">
                     {newPackage.photos.length > 0 ? (
                       <img 
-                        src={URL.createObjectURL(newPackage.photos[0])} 
+                        src={newPackage.photos[0]} 
                         alt="Main" 
                         className="w-full h-full object-cover"
                       />
@@ -658,7 +692,7 @@ export default function VenueAccommodationDashboard() {
                       <div key={idx} className="aspect-square bg-purple-100 rounded-lg overflow-hidden">
                         {newPackage.photos[idx + 1] && (
                           <img 
-                            src={URL.createObjectURL(newPackage.photos[idx + 1])} 
+                            src={newPackage.photos[idx + 1]} 
                             alt={`Thumbnail ${idx + 1}`}
                             className="w-full h-full object-cover"
                           />
@@ -668,12 +702,17 @@ export default function VenueAccommodationDashboard() {
                     <button
                       type="button"
                       onClick={() => document.getElementById('photo-upload')?.click()}
+                      disabled={uploadingImages}
                       className="aspect-square bg-purple-100 rounded-lg flex items-center justify-center text-2xl"
                       style={{color: '#755A7B'}}
                     >
-                      +
+                      {uploadingImages ? '...' : '+'}
                     </button>
                   </div>
+
+                  {uploadingImages && (
+                    <p className="mt-3 text-sm text-gray-500">Uploading images to Cloudinary...</p>
+                  )}
                   
                   <input
                     id="photo-upload"

@@ -8,6 +8,13 @@ import { FaHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaStar, FaShoppingCart, Fa
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
+function normalizeVenueCategory(category: string | undefined): VenueCategory | null {
+  if (category === 'hotel-rooms' || category === 'hotel-room') return 'hotel-rooms';
+  if (category === 'banquet-halls' || category === 'banquet-hall') return 'banquet-halls';
+  if (category === 'outdoor-venues' || category === 'outdoor-venue') return 'outdoor-venues';
+  return null;
+}
+
 interface VendorOffering {
   id: number;
   name: string;
@@ -79,7 +86,9 @@ export default function VenueAccommodationServices() {
       const allFacilities = new Set<string>();
 
       offerings.forEach((offering) => {
-        if (!offering.isDraft && offering.vendor) {
+        const normalizedCategory = normalizeVenueCategory(offering.category);
+
+        if (!offering.isDraft && offering.vendor && normalizedCategory) {
           const vendor = offering.vendor;
           const vendorId = vendor.id;
 
@@ -99,15 +108,6 @@ export default function VenueAccommodationServices() {
           const vendorData = vendorMap.get(vendorId)!;
           vendorData.offerings.push(offering);
           
-          const category = offering.category || 'hotel-room';
-          let normalizedCategory = 'hotel-rooms';
-          if (category === 'hotel-rooms' || category === 'hotel-room') {
-            normalizedCategory = 'hotel-rooms';
-          } else if (category === 'banquet-halls' || category === 'banquet-hall') {
-            normalizedCategory = 'banquet-halls';
-          } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
-            normalizedCategory = 'outdoor-venues';
-          }
           vendorData.categories.add(normalizedCategory);
           
           if (offering.facilities && Array.isArray(offering.facilities)) {

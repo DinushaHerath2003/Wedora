@@ -4,14 +4,26 @@ type ApiOptions = RequestInit & {
   token?: string;
 };
 
+function getStoredToken(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem('token') || '';
+}
+
+function clearStoredAuth() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+}
+
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { token, headers, ...rest } = options;
+  const accessToken = token ?? getStoredToken();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...rest,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(headers || {}),
     },
   });
@@ -20,6 +32,13 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
   const payload = contentType.includes('application/json') ? await response.json() : await response.text();
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearStoredAuth();
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+
     const message =
       typeof payload === 'string' && payload.trim()
         ? payload.trim()

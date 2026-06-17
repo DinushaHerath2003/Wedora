@@ -8,14 +8,18 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { AdminGuard } from '../common/guards/admin.guard';
 import { AdminService } from './admin.service';
 import { ContactsService } from '../contacts/contacts.service';
 import { AdminUpdateUserDto, AdminUpdateVendorDto } from './dto/admin.dto';
 import { ReplyContactMessageDto } from '../contacts/dto/contact-message.dto';
+import { Roles } from '../common/auth/roles.decorator';
+import { UserRole } from '../common/constants';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('admin')
-@UseGuards(AdminGuard)
+@Roles(UserRole.ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,

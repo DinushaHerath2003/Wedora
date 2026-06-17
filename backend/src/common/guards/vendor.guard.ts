@@ -7,12 +7,12 @@ type RequestWithUser = {
 };
 
 @Injectable()
-export class AdminGuard implements CanActivate {
+export class VendorGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<RequestWithUser>();
 
-    if (request.user?.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Admin access required');
+    if (request.user?.role !== UserRole.VENDOR) {
+      throw new ForbiddenException('Vendor access required');
     }
 
     return true;
