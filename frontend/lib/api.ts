@@ -21,11 +21,13 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 
   if (!response.ok) {
     const message =
-      typeof payload === 'object' && payload && 'message' in payload
-        ? Array.isArray((payload as { message?: unknown }).message)
-          ? (payload as { message: unknown[] }).message.join(', ')
-          : String((payload as { message?: unknown }).message)
-        : 'Request failed';
+      typeof payload === 'string' && payload.trim()
+        ? payload.trim()
+        : typeof payload === 'object' && payload && 'message' in payload
+          ? Array.isArray((payload as { message?: unknown }).message)
+            ? (payload as { message: unknown[] }).message.join(', ')
+            : String((payload as { message?: unknown }).message)
+          : `Request failed (${response.status})`;
     throw new Error(message);
   }
 

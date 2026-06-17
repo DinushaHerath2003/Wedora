@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave } from 'react-icons/fa';
-
-type CeremonialCategory = 'poruwa-ceremony' | 'religious-services' | 'cultural-events';
+import { apiFetch } from '@/lib/api';
+import {
+  CeremonialCategory,
+  CEREMONIAL_DASHBOARD_BASE,
+  normalizeCeremonialCategory,
+} from '@/lib/ceremonial-dashboard';
+import CeremonialSidebar from '@/components/ceremonial/CeremonialSidebar';
+import { FaEdit, FaTrash, FaCalendarAlt, FaTimes, FaSave } from 'react-icons/fa';
 
 interface Booking {
   id: string;
@@ -13,11 +18,12 @@ interface Booking {
   clientEmail: string;
   clientPhone: string;
   description: string;
-  category: string;
+  category: CeremonialCategory;
   time: string;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -27,9 +33,12 @@ interface VendorUser {
 export default function PlaceBookingPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
+  const organizationLabel = user?.organizationName || user?.name || 'Ceremonial Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
   const [activeCategory, setActiveCategory] = useState<CeremonialCategory>('poruwa-ceremony');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [offerings, setOfferings] = useState<{ id: number; category: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -38,8 +47,12 @@ export default function PlaceBookingPage() {
     clientEmail: '',
     clientPhone: '',
     description: '',
-    time: '10:00'
+    time: '10:00',
   });
+  const [bookingError, setBookingError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -69,30 +82,63 @@ export default function PlaceBookingPage() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
+    if (!userStr) {
+      router.push('/login');
+      return;
+    }
+
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
+    }
+
+    const vendorId = Number(userData.id);
+    if (Number.isFinite(vendorId) && vendorId > 0) {
+      fetchVendorBookings(vendorId);
+      fetchVendorOfferings(vendorId);
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Sacred Ceremonies'
-      });
+      router.push('/login');
     }
+  }, [router]);
 
-    // Load bookings from localStorage
-    const savedBookings = localStorage.getItem('ceremonialBookings');
-    if (savedBookings) {
-      setBookings(JSON.parse(savedBookings));
+  const fetchVendorBookings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/bookings?vendorId=${vendorId}`);
+      const mapped = data.map((booking) => ({
+        id: booking.id.toString(),
+        date: booking.eventDate ? String(booking.eventDate).slice(0, 10) : '',
+        time: booking.eventTime || '09:00',
+        clientName: booking.clientName || booking.user?.name || 'Guest',
+        clientEmail: booking.clientEmail || booking.user?.email || '',
+        clientPhone: booking.clientPhone || '',
+        description: booking.notes || '',
+        category: normalizeCeremonialCategory(booking.offering?.category),
+      }));
+      setBookings(mapped);
+      setApiError('');
+    } catch (error) {
+      console.error('Failed to load vendor bookings', error);
+      setApiError('Unable to load bookings from backend.');
     }
-  }, []);
+  };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/');
+  const fetchVendorOfferings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setOfferings(
+        data
+          .filter((offering) => !offering.isDraft)
+          .map((offering) => ({
+            id: offering.id,
+            category: offering.category,
+          })),
+      );
+    } catch (error) {
+      console.error('Failed to load offerings', error);
+    }
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -129,60 +175,114 @@ export default function PlaceBookingPage() {
     setSelectedDate(dateStr);
     setShowBookingModal(true);
     setEditingBooking(null);
+    setBookingError('');
     setNewBooking({
       clientName: '',
       clientEmail: '',
       clientPhone: '',
       description: '',
-      time: '10:00'
+      time: '09:00',
     });
   };
 
-  const handleSaveBooking = () => {
+  const handleSaveBooking = async () => {
     if (!selectedDate) return;
 
-    if (editingBooking) {
-      // Update existing booking
-      const updatedBookings = bookings.map(booking =>
-        booking.id === editingBooking.id
-          ? {
-              ...booking,
-              clientName: newBooking.clientName,
-              clientEmail: newBooking.clientEmail,
-              clientPhone: newBooking.clientPhone,
-              description: newBooking.description,
-              time: newBooking.time
-            }
-          : booking
-      );
-      setBookings(updatedBookings);
-      localStorage.setItem('entertainmentBookings', JSON.stringify(updatedBookings));
-    } else {
-      // Create new booking
-      const booking: Booking = {
-        id: Date.now().toString(),
-        date: selectedDate,
-        clientName: newBooking.clientName,
-        clientEmail: newBooking.clientEmail,
-        clientPhone: newBooking.clientPhone,
-        description: newBooking.description,
-        category: activeCategory,
-        time: newBooking.time
-      };
+    const duplicateSlot = bookings.some(
+      (booking) =>
+        booking.date === selectedDate &&
+        booking.category === activeCategory &&
+        booking.time === newBooking.time &&
+        (!editingBooking || booking.id !== editingBooking.id),
+    );
 
-      const updatedBookings = [...bookings, booking];
-      setBookings(updatedBookings);
-      localStorage.setItem('entertainmentBookings', JSON.stringify(updatedBookings));
+    if (duplicateSlot) {
+      setBookingError('This time slot is already booked. Please choose a different time.');
+      return;
     }
 
-    setShowBookingModal(false);
-    setNewBooking({
-      clientName: '',
-      clientEmail: '',
-      clientPhone: '',
-      description: '',
-      time: '10:00'
-    });
+    const vendorId = Number(user?.id);
+    const selectedOffering =
+      offerings.find((offering) => offering.category === activeCategory) || offerings[0];
+
+    if (!user || !Number.isFinite(vendorId) || vendorId <= 0) {
+      setBookingError('Invalid vendor session. Please log in again.');
+      return;
+    }
+
+    const payload = {
+      offeringId: selectedOffering?.id ?? 0,
+      vendorId,
+      eventDate: selectedDate,
+      eventTime: newBooking.time,
+      clientName: newBooking.clientName,
+      clientEmail: newBooking.clientEmail,
+      clientPhone: newBooking.clientPhone,
+      notes: newBooking.description,
+    };
+
+    try {
+      if (editingBooking) {
+        await apiFetch(`/bookings/${editingBooking.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        setBookings((prev) =>
+          prev.map((booking) =>
+            booking.id === editingBooking.id
+              ? {
+                  ...booking,
+                  clientName: newBooking.clientName,
+                  clientEmail: newBooking.clientEmail,
+                  clientPhone: newBooking.clientPhone,
+                  description: newBooking.description,
+                  time: newBooking.time,
+                }
+              : booking,
+          ),
+        );
+      } else {
+        if (!selectedOffering) {
+          setBookingError('No package found for this category. Please post a package first.');
+          return;
+        }
+
+        const createdBooking = await apiFetch<any>('/bookings', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        setBookings((prev) => [
+          ...prev,
+          {
+            id: createdBooking.id.toString(),
+            date: selectedDate,
+            clientName: newBooking.clientName,
+            clientEmail: newBooking.clientEmail,
+            clientPhone: newBooking.clientPhone,
+            description: newBooking.description,
+            category: activeCategory,
+            time: newBooking.time,
+          },
+        ]);
+      }
+
+      setShowBookingModal(false);
+      setNewBooking({
+        clientName: '',
+        clientEmail: '',
+        clientPhone: '',
+        description: '',
+        time: '10:00',
+      });
+      setBookingError('');
+      if (Number.isFinite(vendorId) && vendorId > 0) {
+        await fetchVendorBookings(vendorId);
+      }
+    } catch (error) {
+      console.error('Failed to save booking', error);
+      setBookingError('Unable to save booking. Please try again.');
+    }
   };
 
   const handleEditBooking = (booking: Booking) => {
@@ -196,11 +296,15 @@ export default function PlaceBookingPage() {
     });
   };
 
-  const handleDeleteBooking = (id: string) => {
-    if (confirm('Are you sure you want to delete this booking?')) {
-      const updatedBookings = bookings.filter(booking => booking.id !== id);
-      setBookings(updatedBookings);
-      localStorage.setItem('entertainmentBookings', JSON.stringify(updatedBookings));
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) return;
+
+    try {
+      await apiFetch(`/bookings/${id}`, { method: 'DELETE' });
+      setBookings((prev) => prev.filter((booking) => booking.id !== id));
+    } catch (error) {
+      console.error('Failed to delete booking', error);
+      alert('Unable to delete booking.');
     }
   };
 
@@ -217,85 +321,20 @@ export default function PlaceBookingPage() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
-      {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
-        <div className="p-6 border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              SC
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-800">Sacred Ceremonies</h2>
-              <p className="text-xs text-gray-500">Traditional Ceremonial Services</p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4">
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaChartBar /> Overview
-            </button>
-            <button 
-              onClick={() => router.push('/dashboard/ceremonial')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaPlus /> Post Package
-            </button>
-            <button 
-              onClick={() => router.push('/dashboard/ceremonial/posted-packages')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaFileInvoice /> Posted Packages
-            </button>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaEdit /> Draft Package
-            </button>
-          </div>
-
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Appointment</p>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors"
-              style={{backgroundColor: '#755A7B', color: 'white'}}
-            >
-              <FaCalendarAlt /> Place a Booking
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaEye /> Accept Booking
-            </button>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">General</p>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaBell /> Notifications
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaHeart /> Feedback
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaCog /> Setting
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all"
-              style={{backgroundColor: '#755A7B'}}
-            >
-              <FaMoon /> Logout
-            </button>
-          </div>
-        </nav>
-      </aside>
+      <CeremonialSidebar
+        activePage="place-booking"
+        organizationLabel={organizationLabel}
+        organizationInitial={organizationInitial}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          {apiError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {apiError}
+            </div>
+          )}
           {/* Banner Section */}
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
@@ -610,6 +649,12 @@ export default function PlaceBookingPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {bookingError && (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {bookingError}
                 </div>
               )}
 

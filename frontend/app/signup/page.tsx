@@ -160,7 +160,7 @@ export default function SignupPage() {
             router.push('/');
             break;
           case 'admin':
-            router.push('/dashboard/admin');
+            router.push('/admin/dashboard');
             break;
           default:
             router.push('/');
