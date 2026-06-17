@@ -5,9 +5,17 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
+import { addCartItem, getCartCount } from '@/lib/cart-storage';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
+
+function normalizeVenueCategory(category: string | undefined): VenueCategory | null {
+  if (category === 'hotel-rooms' || category === 'hotel-room') return 'hotel-rooms';
+  if (category === 'banquet-halls' || category === 'banquet-hall') return 'banquet-halls';
+  if (category === 'outdoor-venues' || category === 'outdoor-venue') return 'outdoor-venues';
+  return null;
+}
 
 interface Package {
   id: string;
@@ -75,6 +83,7 @@ export default function VendorDetailPage() {
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [cartCount, setCartCount] = useState(0);
 
   // Mock vendor data
   const mockVendor: Vendor = {
@@ -170,6 +179,8 @@ export default function VendorDetailPage() {
         email: 'demo@wedora.com'
       });
     }
+
+    setCartCount(getCartCount());
   }, []);
 
   const getUserBudgetKeys = () => getBudgetStorageKeys(user);
@@ -182,24 +193,21 @@ export default function VendorDetailPage() {
         const vendorIdNum = Number(vendorId);
         const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorIdNum}`);
         
-        if (offerings && offerings.length > 0) {
-          const firstOffering = offerings[0];
+        const venueOfferings = (offerings || []).filter(
+          (offering) => !offering.isDraft && normalizeVenueCategory(offering.category),
+        );
+
+        if (venueOfferings.length > 0) {
+          const firstOffering = venueOfferings[0];
           const vendorData = firstOffering.vendor;
           
           // Build vendor object from API data
           const categories = new Set<VenueCategory>();
           const allFacilities = new Set<string>();
           
-          offerings.forEach((offering) => {
-            const category = offering.category || 'hotel-room';
-            let normalized: VenueCategory = 'hotel-rooms';
-            if (category === 'hotel-rooms' || category === 'hotel-room') {
-              normalized = 'hotel-rooms';
-            } else if (category === 'banquet-halls' || category === 'banquet-hall') {
-              normalized = 'banquet-halls';
-            } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
-              normalized = 'outdoor-venues';
-            }
+          venueOfferings.forEach((offering) => {
+            const normalized = normalizeVenueCategory(offering.category);
+            if (!normalized) return;
             categories.add(normalized);
             
             if (offering.facilities && Array.isArray(offering.facilities)) {
@@ -223,20 +231,12 @@ export default function VendorDetailPage() {
           setVendor(apiVendor);
           
           // Build packages from offerings
-          const apiPackages: Package[] = offerings
-            .filter((offering) => !offering.isDraft)
-            .map((offering) => {
-              const category = offering.category || 'hotel-room';
-              let normalizedCat: VenueCategory = 'hotel-rooms';
-              if (category === 'hotel-rooms' || category === 'hotel-room') {
-                normalizedCat = 'hotel-rooms';
-              } else if (category === 'banquet-halls' || category === 'banquet-hall') {
-                normalizedCat = 'banquet-halls';
-              } else if (category === 'outdoor-venues' || category === 'outdoor-venue') {
-                normalizedCat = 'outdoor-venues';
-              }
+          const apiPackages: Package[] = venueOfferings
+            .reduce<Package[]>((packages, offering) => {
+              const normalizedCat = normalizeVenueCategory(offering.category);
+              if (!normalizedCat) return packages;
               
-              return {
+              packages.push({
                 id: offering.id.toString(),
                 vendorId: vendorIdNum.toString(),
                 category: normalizedCat,
@@ -248,8 +248,10 @@ export default function VendorDetailPage() {
                 discount: offering.discount,
                 discountType: offering.discountType,
                 description: offering.description
-              };
-            });
+              });
+
+              return packages;
+            }, []);
           
           setPackages(apiPackages);
         } else {
@@ -337,6 +339,23 @@ export default function VendorDetailPage() {
     } else {
       alert('Package already in budget calculator!');
     }
+  };
+
+  const handleAddToCart = (pkg: Package, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedCart = addCartItem({
+      id: `venue-${vendor.id}-${pkg.id}`,
+      vendorId: vendor.id,
+      vendorName: vendor.organizationName,
+      packageName: pkg.title,
+      category: pkg.category,
+      price: calculateDiscountedPrice(pkg.pricePerDay, pkg.discount),
+      features: pkg.facilities,
+      image: pkg.photos[0],
+    });
+
+    setCartCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
+    alert(`${pkg.title} added to cart!`);
   };
 
   const filteredPackages = selectedCategory === 'all'
@@ -450,7 +469,7 @@ export default function VendorDetailPage() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-purple-700 relative" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 
@@ -686,18 +705,25 @@ export default function VendorDetailPage() {
                       <p className="text-xs text-gray-500">per day</p>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       <button
                         onClick={() => router.push(`/dashboard/venue-accommodation/posted-packages/${pkg.id}`)}
-                        className="flex-1 px-4 py-2 rounded-lg font-medium border-2 transition-all hover:shadow-sm"
+                        className="px-4 py-2 rounded-lg font-medium border-2 transition-all hover:shadow-sm"
                         style={{ borderColor: '#755A7B', color: '#755A7B', backgroundColor: 'white' }}
                       >
                         See More
                       </button>
                       <button
+                        onClick={(e) => handleAddToCart(pkg, e)}
+                        className="px-4 py-2 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                        style={{ backgroundColor: '#755A7B' }}
+                      >
+                        <FaShoppingCart className="inline mr-1" /> Add to Cart
+                      </button>
+                      <button
                         onClick={(e) => addToBudgetCalculator(pkg, e)}
                         disabled={isInBudget}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium text-white transition-all ${
+                        className={`px-4 py-2 rounded-lg font-medium text-white transition-all ${
                           isInBudget ? 'bg-green-500 cursor-not-allowed' : 'hover:opacity-90'
                         }`}
                         style={{backgroundColor: isInBudget ? '#10b981' : '#755A7B'}}

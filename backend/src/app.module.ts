@@ -14,6 +14,9 @@ import { Vendor } from './vendors/entities/vendor.entity';
 import { ServiceOffering } from './offerings/entities/offering.entity';
 import { Booking } from './bookings/entities/booking.entity';
 import { Review } from './reviews/entities/review.entity';
+import { ContactMessage } from './contacts/entities/contact-message.entity';
+import { ContactsModule } from './contacts/contacts.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -28,7 +31,7 @@ import { Review } from './reviews/entities/review.entity';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      entities: [User, Vendor, ServiceOffering, Booking, Review],
+      entities: [User, Vendor, ServiceOffering, Booking, Review, ContactMessage],
       autoLoadEntities: true,
       synchronize: true,
     }),
@@ -38,6 +41,8 @@ import { Review } from './reviews/entities/review.entity';
     OfferingsModule,
     BookingsModule,
     ReviewsModule,
+    ContactsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

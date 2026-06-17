@@ -7,7 +7,7 @@ import { getVendorDashboardPath } from '@/lib/constants';
 import { apiFetch } from '@/lib/api';
 
 type UserSignupResponse = {
-  token: string;
+  accessToken: string;
   user: {
     id: string;
     email: string;
@@ -21,16 +21,18 @@ type UserSignupResponse = {
 
 type VendorSignupResponse = {
   accessToken: string;
-  id: number;
-  email: string;
-  role: string;
-  organizationName: string;
-  phone: string;
-  location: string;
-  categories: string[];
-  contactPerson?: string;
-  isActive: boolean;
-  createdAt: string;
+  user: {
+    id: number;
+    email: string;
+    role: string;
+    organizationName: string;
+    phone: string;
+    location: string;
+    categories: string[];
+    contactPerson?: string;
+    isActive: boolean;
+    createdAt: string;
+  };
 };
 
 export default function SignupPage() {
@@ -133,14 +135,8 @@ export default function SignupPage() {
         });
 
         localStorage.setItem('token', vendorResponse.accessToken);
-        localStorage.setItem(
-          'user',
-          JSON.stringify({
-            ...vendorResponse,
-            role: 'vendor',
-          })
-        );
-        router.push(getVendorDashboardPath(vendorResponse.categories));
+        localStorage.setItem('user', JSON.stringify(vendorResponse.user));
+        router.push(getVendorDashboardPath(vendorResponse.user.categories));
       } else {
         const userResponse = await apiFetch<UserSignupResponse>('/auth/signup', {
           method: 'POST',
@@ -152,7 +148,7 @@ export default function SignupPage() {
           }),
         });
 
-        localStorage.setItem('token', userResponse.token);
+        localStorage.setItem('token', userResponse.accessToken);
         localStorage.setItem('user', JSON.stringify(userResponse.user));
 
         switch (userResponse.user.role) {
@@ -160,7 +156,7 @@ export default function SignupPage() {
             router.push('/');
             break;
           case 'admin':
-            router.push('/dashboard/admin');
+            router.push('/admin/dashboard');
             break;
           default:
             router.push('/');

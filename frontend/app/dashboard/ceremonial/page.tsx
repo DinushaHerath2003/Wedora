@@ -1,25 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
-
-type CeremonialCategory = 'poruwa-ceremony' | 'religious-services' | 'cultural-events';
-
-interface Package {
-  id: string;
-  category: CeremonialCategory;
-  title: string;
-  pricePerDay: number;
-  services: string[];
-  photos: string[];
-  createdAt: Date;
-  duration?: string;
-  discount?: string;
-  discountType?: string;
-}
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
+import {
+  buildCeremonialOfferingPayload,
+  CeremonialCategory,
+  CEREMONIAL_DASHBOARD_BASE,
+  normalizeCeremonialCategory,
+} from '@/lib/ceremonial-dashboard';
+import CeremonialSidebar from '@/components/ceremonial/CeremonialSidebar';
+import { FaUpload } from 'react-icons/fa';
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -28,11 +23,13 @@ interface VendorUser {
 
 export default function CeremonialDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<VendorUser | null>(null);
-  const [packages, setPackages] = useState<Package[]>([]);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<CeremonialCategory>('poruwa-ceremony');
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedPackageType, setSelectedPackageType] = useState<string>('');
+  const [toast, setToast] = useState<ToastProps | null>(null);
   const [newPackage, setNewPackage] = useState({
     title: '',
     pricePerDay: '',
@@ -42,6 +39,9 @@ export default function CeremonialDashboard() {
     discountType: '',
     photos: [] as File[],
   });
+
+  const organizationLabel = user?.organizationName || user?.name || 'Ceremonial Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerText = () => {
     switch(activeCategory) {
@@ -70,30 +70,63 @@ export default function CeremonialDashboard() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Sacred Ceremonies'
-      });
+    if (!userStr) {
+      router.push('/login');
+      return;
     }
-    
-    const savedPackages = localStorage.getItem('ceremonialPackages');
-    if (savedPackages) {
-      setPackages(JSON.parse(savedPackages));
-    }
-  }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/');
-  };
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
+    }
+
+    const vendorId = Number(userData.id);
+    if (!Number.isFinite(vendorId) || vendorId <= 0) {
+      router.push('/login');
+    }
+  }, [router]);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) {
+      setEditingPackageId(null);
+      return;
+    }
+
+    const loadPackageForEdit = async () => {
+      try {
+        const data = await apiFetch<any>(`/offerings/${editId}`);
+        setEditingPackageId(editId);
+        setActiveCategory(normalizeCeremonialCategory(data.category));
+        setSelectedServices(Array.isArray(data.facilities) ? data.facilities : []);
+        setSelectedPackageType(data.roomType || '');
+        setNewPackage({
+          title: data.name || '',
+          pricePerDay: String(data.price || ''),
+          services: data.description || '',
+          duration: data.roomType || '',
+          discount: data.discount || '',
+          discountType: data.discountType || '',
+          photos: [],
+        });
+        setToast({
+          message: 'Package loaded for editing.',
+          type: 'success',
+        });
+      } catch (error) {
+        console.error('Failed to load package for edit', error);
+        setToast({
+          message: 'Unable to load this package for editing.',
+          type: 'error',
+        });
+      }
+    };
+
+    loadPackageForEdit();
+  }, [searchParams]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -104,114 +137,87 @@ export default function CeremonialDashboard() {
     }
   };
 
-  const handleSubmitPackage = (e?: React.FormEvent) => {
+  const handleSubmitPackage = async (e?: React.FormEvent, isDraft = false) => {
     if (e) e.preventDefault();
-    
-    const packageData: Package = {
-      id: Date.now().toString(),
-      category: activeCategory,
+
+    const vendorId = Number(user?.id);
+    if (!user || !Number.isFinite(vendorId) || vendorId <= 0) {
+      setToast({ message: 'Invalid session. Please log in again.', type: 'error' });
+      router.push('/login');
+      return;
+    }
+
+    if (!newPackage.title || !newPackage.pricePerDay) {
+      setToast({
+        message: 'Please fill in service name and price.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const description =
+      newPackage.services.trim() ||
+      selectedServices.join(', ') ||
+      `${newPackage.title} ceremonial service package`;
+
+    const payload = buildCeremonialOfferingPayload({
       title: newPackage.title,
-      pricePerDay: parseFloat(newPackage.pricePerDay),
-      services: newPackage.services.split(',').map(s => s.trim()),
-      photos: newPackage.photos.map(f => URL.createObjectURL(f)),
-      createdAt: new Date(),
-      duration: newPackage.duration || undefined,
-      discount: newPackage.discount || undefined,
-      discountType: newPackage.discountType || undefined,
-    };
-
-    const updatedPackages = [...packages, packageData];
-    setPackages(updatedPackages);
-    localStorage.setItem('ceremonialPackages', JSON.stringify(updatedPackages));
-
-    setNewPackage({
-      title: '',
-      pricePerDay: '',
-      services: '',
-      duration: '',
-      discount: '',
-      discountType: '',
-      photos: [],
+      description,
+      category: activeCategory,
+      pricePerDay: newPackage.pricePerDay,
+      selectedServices,
+      packageType: selectedPackageType,
+      duration: newPackage.duration,
+      discount: newPackage.discount,
+      discountType: newPackage.discountType,
+      photos: newPackage.photos,
+      vendorId,
+      isDraft,
     });
+
+    try {
+      const requestPath = editingPackageId ? `/offerings/${editingPackageId}` : '/offerings';
+      await apiFetch(requestPath, {
+        method: editingPackageId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      setNewPackage({
+        title: '',
+        pricePerDay: '',
+        services: '',
+        duration: '',
+        discount: '',
+        discountType: '',
+        photos: [],
+      });
+      setSelectedServices([]);
+      setSelectedPackageType('');
+      setEditingPackageId(null);
+
+      setToast({
+        message: isDraft
+          ? 'Package saved as draft successfully!'
+          : 'Ceremonial package posted successfully!',
+        type: 'success',
+      });
+    } catch (err) {
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to save package',
+        type: 'error',
+      });
+    }
   };
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
-      {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
-        <div className="p-6 border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              SC
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-800">Sacred Ceremonies</h2>
-              <p className="text-xs text-gray-500">Traditional Ceremonial Services</p>
-            </div>
-          </div>
-        </div>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-        <nav className="flex-1 p-4">
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaChartBar /> Overview
-            </button>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors"
-              style={{backgroundColor: '#755A7B', color: 'white'}}
-            >
-              <FaPlus /> Post Package
-            </button>
-            <button 
-              onClick={() => router.push('/dashboard/ceremonial/posted-packages')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaFileInvoice /> Posted Packages
-            </button>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaEdit /> Draft Package
-            </button>
-          </div>
-
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Appointment</p>
-            <button 
-              onClick={() => router.push('/dashboard/ceremonial/place-booking')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"
-            >
-              <FaCalendarAlt /> Place a Booking
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaEye /> Accept Booking
-            </button>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">General</p>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaBell /> Notifications
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaHeart /> Feedback
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaCog /> Setting
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all"
-              style={{backgroundColor: '#755A7B'}}
-            >
-              <FaMoon /> Logout
-            </button>
-          </div>
-        </nav>
-      </aside>
+      <CeremonialSidebar
+        activePage="post"
+        organizationLabel={organizationLabel}
+        organizationInitial={organizationInitial}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
@@ -438,25 +444,38 @@ export default function CeremonialDashboard() {
               </div>
             </div>
 
-            <div className="mt-8 flex gap-4">
+            <div className="mt-8 flex flex-col sm:flex-row gap-4">
               <button
                 type="submit"
                 className="flex-1 py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all"
                 style={{backgroundColor: '#755A7B'}}
               >
-                Post Package
+                {editingPackageId ? 'Update Package' : 'Post Package'}
               </button>
               <button
                 type="button"
-                onClick={() => setNewPackage({
-                  title: '',
-                  pricePerDay: '',
-                  services: '',
-                  duration: '',
-                  discount: '',
-                  discountType: '',
-                  photos: [],
-                })}
+                onClick={() => handleSubmitPackage(undefined, true)}
+                className="flex-1 py-3 px-6 rounded-lg font-medium text-white transition-all"
+                style={{backgroundColor: '#A495A8'}}
+              >
+                Save as Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewPackage({
+                    title: '',
+                    pricePerDay: '',
+                    services: '',
+                    duration: '',
+                    discount: '',
+                    discountType: '',
+                    photos: [],
+                  });
+                  setSelectedServices([]);
+                  setSelectedPackageType('');
+                  setEditingPackageId(null);
+                }}
                 className="px-8 py-3 border-2 rounded-lg font-medium hover:bg-gray-50 transition-all"
                 style={{borderColor: '#755A7B', color: '#755A7B'}}
               >

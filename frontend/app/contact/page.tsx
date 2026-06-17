@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from "next/link";
 import { FaEnvelope, FaPhone, FaMapMarkerAlt, FaFacebook, FaInstagram, FaTwitter } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -12,17 +13,34 @@ export default function Contact() {
     subject: '',
     message: ''
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Thank you for contacting us! We will get back to you soon.');
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      subject: '',
-      message: ''
-    });
+    setSubmitting(true);
+    setError('');
+    setSuccess(false);
+
+    try {
+      await apiFetch('/contact', {
+        method: 'POST',
+        body: JSON.stringify(formData),
+      });
+      setSuccess(true);
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        subject: '',
+        message: ''
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send message. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -156,6 +174,16 @@ export default function Contact() {
               <h2 className="text-3xl font-bold text-gray-900 mb-6" style={{fontFamily: 'var(--font-season)'}}>
                 Send Us a Message
               </h2>
+              {success && (
+                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                  Thank you for contacting us! We have received your message and will get back to you soon.
+                </div>
+              )}
+              {error && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {error}
+                </div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
@@ -218,10 +246,11 @@ export default function Contact() {
 
                 <button
                   type="submit"
-                  className="w-full py-4 text-white font-medium rounded-full shadow-lg transition-all hover:shadow-xl hover:opacity-90"
+                  disabled={submitting}
+                  className="w-full py-4 text-white font-medium rounded-full shadow-lg transition-all hover:shadow-xl hover:opacity-90 disabled:opacity-50"
                   style={{backgroundColor: '#755A7B'}}
                 >
-                  Send Message
+                  {submitting ? 'Sending...' : 'Send Message'}
                 </button>
               </form>
             </div>

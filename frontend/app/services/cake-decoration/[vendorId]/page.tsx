@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { addCartItem, getCartCount } from '@/lib/cart-storage';
 import { FaHeart, FaMapMarkerAlt, FaStar, FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaCheck } from 'react-icons/fa';
 
 interface Package {
@@ -19,6 +20,7 @@ export default function CakeVendorDetail() {
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
+  const [cartCount, setCartCount] = useState(0);
 
   // Mock vendor data
   const vendor = {
@@ -138,6 +140,7 @@ export default function CakeVendorDetail() {
         email: 'DinushaHerath@gmail.com'
       });
     }
+    setCartCount(getCartCount());
   }, []);
 
   const handleLogout = () => {
@@ -148,7 +151,17 @@ export default function CakeVendorDetail() {
 
   const handleAddToCart = (pkg: Package) => {
     setSelectedPackage(pkg.id);
-    // Add to cart logic here
+    const updatedCart = addCartItem({
+      id: `cake-decoration-${vendor.id}-${pkg.id}`,
+      vendorId: vendor.id,
+      vendorName: vendor.organizationName,
+      packageName: pkg.name,
+      category: 'Cake Decoration',
+      price: pkg.price,
+      features: pkg.features,
+      image: vendor.image,
+    });
+    setCartCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
     setTimeout(() => {
       alert(`${pkg.name} added to cart!`);
       setSelectedPackage(null);
@@ -210,7 +223,7 @@ export default function CakeVendorDetail() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-purple-700 relative" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 

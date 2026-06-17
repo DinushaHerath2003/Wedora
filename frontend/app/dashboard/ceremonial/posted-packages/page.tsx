@@ -2,24 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
-
-type CeremonialCategory = 'poruwa-ceremony' | 'religious-services' | 'cultural-events';
-
-interface Package {
-  id: string;
-  category: CeremonialCategory;
-  title: string;
-  pricePerDay: number;
-  services: string[];
-  photos: string[];
-  createdAt: Date;
-  duration?: string;
-  discount?: string;
-  discountType?: string;
-}
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
+import {
+  CeremonialCategory,
+  CEREMONIAL_DASHBOARD_BASE,
+  CeremonialPackage,
+  mapOfferingToCeremonialPackage,
+  isCeremonialCategory,
+  resolveOfferingImage,
+} from '@/lib/ceremonial-dashboard';
+import CeremonialSidebar from '@/components/ceremonial/CeremonialSidebar';
+import { FaEdit, FaTrash, FaEye, FaPlus } from 'react-icons/fa';
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -30,80 +27,12 @@ export default function PostedPackagesPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
   const [activeCategory, setActiveCategory] = useState<CeremonialCategory>('poruwa-ceremony');
+  const [toast, setToast] = useState<ToastProps | null>(null);
+  const [packages, setPackages] = useState<CeremonialPackage[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock packages data
-  const mockPackages: Package[] = [
-    {
-      id: '1',
-      category: 'poruwa-ceremony',
-      title: 'Complete Poruwa Ceremony',
-      pricePerDay: 95000,
-      services: ['Poruwa Setup', 'Traditional Music', 'Ceremony Coordination', 'Sacred Items'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      duration: '3-4 hours',
-      discount: '15%',
-      discountType: 'Early Bird'
-    },
-    {
-      id: '2',
-      category: 'poruwa-ceremony',
-      title: 'Traditional Poruwa Package',
-      pricePerDay: 65000,
-      services: ['Poruwa Setup', 'Traditional Decorations', 'Music'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      duration: '2-3 hours',
-      discount: '10%',
-      discountType: 'Weekend Special'
-    },
-    {
-      id: '3',
-      category: 'religious-services',
-      title: 'Complete Religious Ceremony',
-      pricePerDay: 75000,
-      services: ['Religious Rituals', 'Priest Services', 'Sacred Items', 'Blessing Services'],
-      photos: ['/pack3.png'],
-      createdAt: new Date(),
-      duration: '2-3 hours'
-    },
-    {
-      id: '4',
-      category: 'religious-services',
-      title: 'Blessing Ceremony Package',
-      pricePerDay: 55000,
-      services: ['Priest Services', 'Religious Rituals', 'Sacred Items'],
-      photos: ['/pack4.png'],
-      createdAt: new Date(),
-      duration: '1-2 hours',
-      discount: '12%',
-      discountType: 'Season Discount'
-    },
-    {
-      id: '5',
-      category: 'cultural-events',
-      title: 'Cultural Performance Package',
-      pricePerDay: 85000,
-      services: ['Cultural Performances', 'Traditional Music', 'Ceremony Coordination'],
-      photos: ['/pack5.png'],
-      createdAt: new Date(),
-      duration: '3-4 hours'
-    },
-    {
-      id: '6',
-      category: 'cultural-events',
-      title: 'Complete Cultural Event',
-      pricePerDay: 115000,
-      services: ['Cultural Performances', 'Traditional Music', 'Sacred Items', 'Coordination', 'Documentation'],
-      photos: ['/pack6.png'],
-      createdAt: new Date(),
-      duration: '4-5 hours',
-      discount: '20%',
-      discountType: 'Bulk Booking'
-    }
-  ];
-
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const organizationLabel = user?.organizationName || user?.name || 'Ceremonial Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -133,111 +62,71 @@ export default function PostedPackagesPage() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
+    if (!userStr) {
+      router.push('/login');
+      return;
+    }
+
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
+    }
+
+    const vendorId = Number(userData.id);
+    if (Number.isFinite(vendorId) && vendorId > 0) {
+      fetchVendorPackages(vendorId);
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Sacred Ceremonies'
+      router.push('/login');
+    }
+  }, [router]);
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      setLoading(true);
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setPackages(
+        offerings
+          .filter((offering) => !offering.isDraft && isCeremonialCategory(offering.category))
+          .map((offering) => mapOfferingToCeremonialPackage(offering)),
+      );
+    } catch (error) {
+      setToast({
+        message: `Failed to load packages: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePackage = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this package?')) return;
+
+    try {
+      await apiFetch(`/offerings/${id}`, { method: 'DELETE' });
+      setPackages((prev) => prev.filter((pkg) => pkg.id !== id));
+      setToast({ message: 'Package deleted successfully!', type: 'success' });
+    } catch (error) {
+      setToast({
+        message: `Failed to delete package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
       });
     }
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/');
   };
 
-  const handleDeletePackage = (id: string) => {
-    if (confirm('Are you sure you want to delete this package?')) {
-      setPackages(packages.filter(pkg => pkg.id !== id));
-    }
-  };
-
-  const filteredPackages = packages.filter(pkg => pkg.category === activeCategory);
+  const filteredPackages = packages.filter((pkg) => pkg.category === activeCategory);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
-      {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
-        <div className="p-6 border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              SC
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-800">Sacred Ceremonies</h2>
-              <p className="text-xs text-gray-500">Traditional Ceremonial Services</p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4">
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaChartBar /> Overview
-            </button>
-            <button 
-              onClick={() => router.push('/dashboard/ceremonial')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaPlus /> Post Package
-            </button>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors"
-              style={{backgroundColor: '#755A7B', color: 'white'}}
-            >
-              <FaFileInvoice /> Posted Packages
-            </button>
-            <button 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
-            >
-              <FaEdit /> Draft Package
-            </button>
-          </div>
-
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Appointment</p>
-            <button 
-              onClick={() => router.push('/dashboard/ceremonial/place-booking')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"
-            >
-              <FaCalendarAlt /> Place a Booking
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaEye /> Accept Booking
-            </button>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-400 mb-2 px-3">General</p>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaBell /> Notifications
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaHeart /> Feedback
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
-              <FaCog /> Setting
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all"
-              style={{backgroundColor: '#755A7B'}}
-            >
-              <FaMoon /> Logout
-            </button>
-          </div>
-        </nav>
-      </aside>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      <CeremonialSidebar
+        activePage="posted-packages"
+        organizationLabel={organizationLabel}
+        organizationInitial={organizationInitial}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
@@ -311,13 +200,20 @@ export default function PostedPackagesPage() {
           </div>
 
           {/* Packages Grid */}
+          {loading ? (
+            <div className="text-center py-16">
+              <div className="inline-block mb-4"><div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: '#755A7B' }} /></div>
+              <p className="text-gray-600">Loading packages...</p>
+            </div>
+          ) : (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {filteredPackages.map((pkg) => (
               <div key={pkg.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow">
                 {/* Package Image */}
                 <div className="relative h-48 bg-gray-200">
                   <img 
-                    src={pkg.photos[0]} 
+                    src={resolveOfferingImage(pkg.photos)} 
                     alt={pkg.title}
                     className="w-full h-full object-cover"
                   />
@@ -372,13 +268,21 @@ export default function PostedPackagesPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2">
-                    <button 
+                    <button
+                      onClick={() => router.push(`${CEREMONIAL_DASHBOARD_BASE}/posted-packages/${pkg.id}`)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all"
                       style={{backgroundColor: '#755A7B'}}
                     >
+                      <FaEye /> View
+                    </button>
+                    <button
+                      onClick={() => router.push(`${CEREMONIAL_DASHBOARD_BASE}?edit=${pkg.id}`)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium transition-all"
+                      style={{borderColor: '#755A7B', color: '#755A7B'}}
+                    >
                       <FaEdit /> Edit
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDeletePackage(pkg.id)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all"
                     >
@@ -391,19 +295,21 @@ export default function PostedPackagesPage() {
           </div>
 
           {/* Empty State */}
-          {filteredPackages.length === 0 && (
+          {!loading && filteredPackages.length === 0 && (
             <div className="text-center py-16">
               <div className="text-6xl text-gray-300 mb-4">📦</div>
               <h3 className="text-xl font-semibold text-gray-600 mb-2">No packages found</h3>
-              <p className="text-gray-500 mb-6">You haven't posted any packages in this category yet.</p>
-              <button 
-                onClick={() => router.push('/dashboard/ceremonial')}
+              <p className="text-gray-500 mb-6">You haven&apos;t posted any packages in this category yet.</p>
+              <button
+                onClick={() => router.push(CEREMONIAL_DASHBOARD_BASE)}
                 className="px-6 py-3 rounded-lg font-medium text-white"
                 style={{backgroundColor: '#755A7B'}}
               >
                 <FaPlus className="inline mr-2" /> Create Your First Package
               </button>
             </div>
+          )}
+          </>
           )}
         </main>
 

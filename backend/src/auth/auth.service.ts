@@ -1,16 +1,19 @@
 import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/entities/user.entity';
 import { SignupDto, LoginDto } from './dto/auth.dto';
 import { UserRole } from '../common/constants';
+import { JwtPayload } from '../common/auth/jwt-payload.type';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async signup(signupDto: SignupDto) {
@@ -52,14 +55,11 @@ export class AuthService {
 
     await this.userRepository.save(user);
 
-    // Generate a simple token (in production, use JWT)
-    const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
-
     // Return user data without password
     const { password: _, ...userWithoutPassword } = user;
 
     return {
-      token,
+      accessToken: this.generateAccessToken(user),
       user: userWithoutPassword,
     };
   }
@@ -84,15 +84,35 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Generate a simple token (in production, use JWT)
-    const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
-
     // Return user data without password
     const { password: _, ...userWithoutPassword } = user;
 
     return {
-      token,
+      accessToken: this.generateAccessToken(user),
       user: userWithoutPassword,
     };
+  }
+
+  async getCurrentUser(authUser: JwtPayload) {
+    const user = await this.userRepository.findOne({
+      where: { id: String(authUser.sub) },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const { password: _, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
+  private generateAccessToken(user: User): string {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    return this.jwtService.sign(payload);
   }
 }

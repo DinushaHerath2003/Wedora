@@ -3,9 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { addCartItem, getCartCount } from '@/lib/cart-storage';
+import { apiFetch } from '@/lib/api';
+import {
+  CeremonialCategory,
+  CEREMONIAL_CATEGORY_LABELS,
+  isCeremonialCategory,
+  normalizeCeremonialCategory,
+  resolveOfferingImage,
+} from '@/lib/ceremonial-dashboard';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
-
-type CeremonialCategory = 'astrologers' | 'priests' | 'registrars' | 'traditional-services';
 
 interface Package {
   id: string;
@@ -54,13 +61,14 @@ export default function CeremonialVendorDetailPage() {
   const [budgetPackages, setBudgetPackages] = useState<string[]>([]);
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [cartCount, setCartCount] = useState(0);
 
   // Mock vendor data
   const mockVendor: Vendor = {
     id: vendorId,
     name: 'Traditional Wedding Specialists',
     organizationName: 'Traditional Wedding Specialists',
-    category: ['priests', 'traditional-services', 'astrologers'],
+    category: ['poruwa-ceremony', 'religious-services'],
     location: 'Negombo, Sri Lanka',
     rating: 4.9,
     reviewCount: 189,
@@ -74,7 +82,7 @@ export default function CeremonialVendorDetailPage() {
     {
       id: '1',
       vendorId: vendorId,
-      category: 'astrologers',
+      category: 'poruwa-ceremony',
       title: 'Complete Astrological Package',
       price: 35000,
       services: ['Horoscope Matching', 'Auspicious Times', 'Blessing Ceremonies', 'Written Report'],
@@ -88,7 +96,7 @@ export default function CeremonialVendorDetailPage() {
     {
       id: '2',
       vendorId: vendorId,
-      category: 'astrologers',
+      category: 'poruwa-ceremony',
       title: 'Horoscope Matching Service',
       price: 15000,
       services: ['Horoscope Matching', 'Compatibility Report'],
@@ -100,7 +108,7 @@ export default function CeremonialVendorDetailPage() {
     {
       id: '3',
       vendorId: vendorId,
-      category: 'priests',
+      category: 'religious-services',
       title: 'Traditional Poruwa Ceremony',
       price: 65000,
       services: ['Religious Rituals', 'Poruwa Ceremony', 'Traditional Music', 'Blessing Ceremonies'],
@@ -114,7 +122,7 @@ export default function CeremonialVendorDetailPage() {
     {
       id: '4',
       vendorId: vendorId,
-      category: 'priests',
+      category: 'religious-services',
       title: 'Buddhist Wedding Rituals',
       price: 45000,
       services: ['Religious Rituals', 'Blessing Ceremonies', 'Traditional Music'],
@@ -126,7 +134,7 @@ export default function CeremonialVendorDetailPage() {
     {
       id: '5',
       vendorId: vendorId,
-      category: 'traditional-services',
+      category: 'cultural-events',
       title: 'Premium Traditional Package',
       price: 95000,
       services: ['Horoscope Matching', 'Religious Rituals', 'Poruwa Ceremony', 'Traditional Music', 'Blessing Ceremonies', 'Auspicious Times'],
@@ -140,7 +148,7 @@ export default function CeremonialVendorDetailPage() {
     {
       id: '6',
       vendorId: vendorId,
-      category: 'traditional-services',
+      category: 'cultural-events',
       title: 'Traditional Music & Rituals',
       price: 55000,
       services: ['Traditional Music', 'Religious Rituals', 'Blessing Ceremonies'],
@@ -152,7 +160,7 @@ export default function CeremonialVendorDetailPage() {
   ];
 
   const [vendor, setVendor] = useState<Vendor>(mockVendor);
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const [packages, setPackages] = useState<Package[]>([]);
 
   useEffect(() => {
     // Load saved packages from localStorage
@@ -179,7 +187,73 @@ export default function CeremonialVendorDetailPage() {
         email: 'demo@wedora.com'
       });
     }
+    setCartCount(getCartCount());
   }, []);
+
+  useEffect(() => {
+    const fetchCeremonialVendorData = async () => {
+      try {
+        const vendorIdNum = Number(vendorId);
+        const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorIdNum}`);
+        const ceremonialOfferings = (offerings || []).filter(
+          (offering) => !offering.isDraft && isCeremonialCategory(offering.category),
+        );
+
+        if (ceremonialOfferings.length === 0) {
+          setPackages([]);
+          return;
+        }
+
+        const vendorData = ceremonialOfferings[0].vendor;
+        const categories = new Set<CeremonialCategory>();
+        const services = new Set<string>();
+
+        ceremonialOfferings.forEach((offering) => {
+          categories.add(normalizeCeremonialCategory(offering.category));
+          if (Array.isArray(offering.facilities)) {
+            offering.facilities.forEach((service: string) => services.add(service));
+          }
+        });
+
+        setVendor({
+          id: vendorIdNum.toString(),
+          name: vendorData?.organizationName || 'Ceremonial Vendor',
+          organizationName: vendorData?.organizationName || 'Ceremonial Vendor',
+          category: Array.from(categories),
+          location: vendorData?.location || 'Not specified',
+          rating: 4.7,
+          reviewCount: Math.floor(Math.random() * 200) + 50,
+          image: resolveOfferingImage(ceremonialOfferings[0].images, '/poruwa.png'),
+          about: `Ceremonial wedding services in ${vendorData?.location || 'Sri Lanka'}.`,
+          services: Array.from(services),
+        });
+
+        setPackages(
+          ceremonialOfferings.map((offering) => ({
+            id: offering.id.toString(),
+            vendorId: vendorIdNum.toString(),
+            category: normalizeCeremonialCategory(offering.category),
+            title: offering.name || 'Ceremonial Package',
+            price: Number(offering.price) || 0,
+            services: offering.facilities || [],
+            photos: offering.images?.length ? offering.images : ['/poruwa.png'],
+            stock: offering.stock,
+            discount: offering.discount,
+            discountType: offering.discountType,
+            description: offering.description,
+            duration: offering.roomType,
+          })),
+        );
+      } catch (error) {
+        console.error('Failed to fetch ceremonial vendor data:', error);
+        setPackages([]);
+      }
+    };
+
+    if (vendorId) {
+      fetchCeremonialVendorData();
+    }
+  }, [vendorId]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -236,6 +310,23 @@ export default function CeremonialVendorDetailPage() {
     } else {
       alert('Package already in budget calculator!');
     }
+  };
+
+  const handleAddToCart = (pkg: Package, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedCart = addCartItem({
+      id: `ceremonial-${vendor.id}-${pkg.id}`,
+      vendorId: vendor.id,
+      vendorName: vendor.organizationName,
+      packageName: pkg.title,
+      category: pkg.category,
+      price: calculateDiscountedPrice(pkg.price, pkg.discount),
+      features: pkg.services,
+      image: pkg.photos[0],
+    });
+
+    setCartCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
+    alert(`${pkg.title} added to cart!`);
   };
 
   const filteredPackages = selectedCategory === 'all'
@@ -350,7 +441,7 @@ export default function CeremonialVendorDetailPage() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-purple-700 relative" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 
@@ -446,52 +537,40 @@ export default function CeremonialVendorDetailPage() {
           >
             All Packages
           </button>
-          {vendor.category.includes('astrologers') && (
+          {vendor.category.includes('poruwa-ceremony') && (
             <button
-              onClick={() => setSelectedCategory('astrologers')}
+              onClick={() => setSelectedCategory('poruwa-ceremony')}
               className="px-6 py-2 rounded-full font-medium whitespace-nowrap transition-all"
               style={{
-                backgroundColor: selectedCategory === 'astrologers' ? '#755A7B' : '#f3f4f6',
-                color: selectedCategory === 'astrologers' ? 'white' : '#6b7280'
+                backgroundColor: selectedCategory === 'poruwa-ceremony' ? '#755A7B' : '#f3f4f6',
+                color: selectedCategory === 'poruwa-ceremony' ? 'white' : '#6b7280'
               }}
             >
-              Astrologers
+              {CEREMONIAL_CATEGORY_LABELS['poruwa-ceremony']}
             </button>
           )}
-          {vendor.category.includes('priests') && (
+          {vendor.category.includes('religious-services') && (
             <button
-              onClick={() => setSelectedCategory('priests')}
+              onClick={() => setSelectedCategory('religious-services')}
               className="px-6 py-2 rounded-full font-medium whitespace-nowrap transition-all"
               style={{
-                backgroundColor: selectedCategory === 'priests' ? '#755A7B' : '#f3f4f6',
-                color: selectedCategory === 'priests' ? 'white' : '#6b7280'
+                backgroundColor: selectedCategory === 'religious-services' ? '#755A7B' : '#f3f4f6',
+                color: selectedCategory === 'religious-services' ? 'white' : '#6b7280'
               }}
             >
-              Priests
+              {CEREMONIAL_CATEGORY_LABELS['religious-services']}
             </button>
           )}
-          {vendor.category.includes('registrars') && (
+          {vendor.category.includes('cultural-events') && (
             <button
-              onClick={() => setSelectedCategory('registrars')}
+              onClick={() => setSelectedCategory('cultural-events')}
               className="px-6 py-2 rounded-full font-medium whitespace-nowrap transition-all"
               style={{
-                backgroundColor: selectedCategory === 'registrars' ? '#755A7B' : '#f3f4f6',
-                color: selectedCategory === 'registrars' ? 'white' : '#6b7280'
+                backgroundColor: selectedCategory === 'cultural-events' ? '#755A7B' : '#f3f4f6',
+                color: selectedCategory === 'cultural-events' ? 'white' : '#6b7280'
               }}
             >
-              Marriage Registrars
-            </button>
-          )}
-          {vendor.category.includes('traditional-services') && (
-            <button
-              onClick={() => setSelectedCategory('traditional-services')}
-              className="px-6 py-2 rounded-full font-medium whitespace-nowrap transition-all"
-              style={{
-                backgroundColor: selectedCategory === 'traditional-services' ? '#755A7B' : '#f3f4f6',
-                color: selectedCategory === 'traditional-services' ? 'white' : '#6b7280'
-              }}
-            >
-              Traditional Services
+              {CEREMONIAL_CATEGORY_LABELS['cultural-events']}
             </button>
           )}
         </div>
@@ -594,11 +673,18 @@ export default function CeremonialVendorDetailPage() {
                       )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        onClick={(e) => handleAddToCart(pkg, e)}
+                        className="px-4 py-2 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                        style={{ backgroundColor: '#755A7B' }}
+                      >
+                        <FaShoppingCart className="inline mr-1" /> Add to Cart
+                      </button>
                       <button
                         onClick={(e) => addToBudgetCalculator(pkg, e)}
                         disabled={isInBudget}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium text-white transition-all ${
+                        className={`px-4 py-2 rounded-lg font-medium text-white transition-all ${
                           isInBudget ? 'bg-green-500 cursor-not-allowed' : 'hover:opacity-90'
                         }`}
                         style={{backgroundColor: isInBudget ? '#10b981' : '#755A7B'}}

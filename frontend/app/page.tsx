@@ -281,8 +281,7 @@ export default function Home() {
                     type="text"
                     value={profileForm.name}
                     onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2"
-                    style={{ focusRingColor: '#755A7B' }}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#755A7B]"
                   />
                 </div>
                 <div>
@@ -291,8 +290,7 @@ export default function Home() {
                     type="email"
                     value={profileForm.email}
                     onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2"
-                    style={{ focusRingColor: '#755A7B' }}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#755A7B]"
                   />
                 </div>
               </div>

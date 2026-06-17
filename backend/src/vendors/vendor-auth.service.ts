@@ -1,15 +1,19 @@
 import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Vendor } from './entities/vendor.entity';
 import { VendorSignupDto, VendorLoginDto, VendorAuthResponseDto } from './dto/vendor-auth.dto';
+import { UserRole } from '../common/constants';
+import { JwtPayload } from '../common/auth/jwt-payload.type';
 
 @Injectable()
 export class VendorAuthService {
   constructor(
     @InjectRepository(Vendor)
     private vendorRepository: Repository<Vendor>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async signup(signupDto: VendorSignupDto): Promise<VendorAuthResponseDto> {
@@ -43,21 +47,9 @@ export class VendorAuthService {
 
     const savedVendor = await this.vendorRepository.save(vendor);
 
-    // Generate a simple token
-    const accessToken = Buffer.from(`${savedVendor.id}:${Date.now()}`).toString('base64');
-
     return {
-      id: savedVendor.id,
-      email: savedVendor.email,
-      role: 'vendor',
-      organizationName: savedVendor.organizationName,
-      phone: savedVendor.phone,
-      location: savedVendor.location,
-      categories: savedVendor.categories,
-      contactPerson: savedVendor.contactPerson,
-      isActive: savedVendor.isActive,
-      createdAt: savedVendor.createdAt,
-      accessToken,
+      accessToken: this.generateAccessToken(savedVendor),
+      user: this.toAuthUser(savedVendor),
     };
   }
 
@@ -80,13 +72,27 @@ export class VendorAuthService {
       throw new UnauthorizedException('Vendor account is inactive');
     }
 
-    // Generate a simple token
-    const accessToken = Buffer.from(`${vendor.id}:${Date.now()}`).toString('base64');
+    return {
+      accessToken: this.generateAccessToken(vendor),
+      user: this.toAuthUser(vendor),
+    };
+  }
 
+  private generateAccessToken(vendor: Vendor): string {
+    const payload: JwtPayload = {
+      sub: vendor.id,
+      email: vendor.email,
+      role: UserRole.VENDOR,
+    };
+
+    return this.jwtService.sign(payload);
+  }
+
+  private toAuthUser(vendor: Vendor) {
     return {
       id: vendor.id,
       email: vendor.email,
-      role: 'vendor',
+      role: UserRole.VENDOR,
       organizationName: vendor.organizationName,
       phone: vendor.phone,
       location: vendor.location,
@@ -94,7 +100,6 @@ export class VendorAuthService {
       contactPerson: vendor.contactPerson,
       isActive: vendor.isActive,
       createdAt: vendor.createdAt,
-      accessToken,
     };
   }
 }

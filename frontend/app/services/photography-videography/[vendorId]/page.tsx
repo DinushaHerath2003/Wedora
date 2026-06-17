@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { addCartItem, getCartCount } from '@/lib/cart-storage';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type PhotoCategory = 'wedding-photography' | 'pre-wedding-shoots' | 'videography';
@@ -53,6 +54,7 @@ export default function PhotographyVendorDetailPage() {
   const [budgetPackages, setBudgetPackages] = useState<string[]>([]);
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [cartCount, setCartCount] = useState(0);
 
   // Mock vendor data
   const mockVendor: Vendor = {
@@ -172,6 +174,7 @@ export default function PhotographyVendorDetailPage() {
         email: 'demo@wedora.com'
       });
     }
+    setCartCount(getCartCount());
   }, []);
 
   const handleLogout = () => {
@@ -229,6 +232,23 @@ export default function PhotographyVendorDetailPage() {
     } else {
       alert('Package already in budget calculator!');
     }
+  };
+
+  const handleAddToCart = (pkg: Package, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedCart = addCartItem({
+      id: `photography-videography-${vendor.id}-${pkg.id}`,
+      vendorId: vendor.id,
+      vendorName: vendor.organizationName,
+      packageName: pkg.title,
+      category: pkg.category,
+      price: calculateDiscountedPrice(pkg.price, pkg.discount),
+      features: pkg.features,
+      image: pkg.photos[0],
+    });
+
+    setCartCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
+    alert(`${pkg.title} added to cart!`);
   };
 
   const filteredPackages = selectedCategory === 'all'
@@ -343,7 +363,7 @@ export default function PhotographyVendorDetailPage() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-purple-700 relative" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 
@@ -569,11 +589,18 @@ export default function PhotographyVendorDetailPage() {
                       )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        onClick={(e) => handleAddToCart(pkg, e)}
+                        className="px-4 py-2 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                        style={{ backgroundColor: '#755A7B' }}
+                      >
+                        <FaShoppingCart className="inline mr-1" /> Add to Cart
+                      </button>
                       <button
                         onClick={(e) => addToBudgetCalculator(pkg, e)}
                         disabled={isInBudget}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium text-white transition-all ${
+                        className={`px-4 py-2 rounded-lg font-medium text-white transition-all ${
                           isInBudget ? 'bg-green-500 cursor-not-allowed' : 'hover:opacity-90'
                         }`}
                         style={{backgroundColor: isInBudget ? '#10b981' : '#755A7B'}}

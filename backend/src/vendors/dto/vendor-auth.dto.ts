@@ -34,15 +34,17 @@ export class VendorLoginDto {
 }
 
 export class VendorAuthResponseDto {
-  id: number;
-  email: string;
-  role: string;
-  organizationName: string;
-  phone: string;
-  location: string;
-  categories: string[];
-  contactPerson?: string;
-  isActive: boolean;
-  createdAt: Date;
   accessToken: string;
+  user: {
+    id: number;
+    email: string;
+    role: string;
+    organizationName: string;
+    phone: string;
+    location: string;
+    categories: string[];
+    contactPerson?: string;
+    isActive: boolean;
+    createdAt: Date;
+  };
 }
