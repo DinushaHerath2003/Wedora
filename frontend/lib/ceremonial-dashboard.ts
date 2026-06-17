@@ -122,3 +122,10 @@ export function getCeremonialVendorId(user: CeremonialVendorUser | null): number
   if (!Number.isFinite(vendorId) || vendorId <= 0) return null;
   return vendorId;
 }
+
+export function resolveOfferingImage(images?: string[] | null, fallback = '/pack1.png'): string {
+  const first = images?.[0];
+  if (!first) return fallback;
+  if (first.startsWith('/') || first.startsWith('http')) return first;
+  return fallback;
+}

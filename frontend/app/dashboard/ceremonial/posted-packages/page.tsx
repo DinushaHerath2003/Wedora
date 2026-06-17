@@ -9,7 +9,8 @@ import {
   CEREMONIAL_DASHBOARD_BASE,
   CeremonialPackage,
   mapOfferingToCeremonialPackage,
-  normalizeCeremonialCategory,
+  isCeremonialCategory,
+  resolveOfferingImage,
 } from '@/lib/ceremonial-dashboard';
 import CeremonialSidebar from '@/components/ceremonial/CeremonialSidebar';
 import { FaEdit, FaTrash, FaEye, FaPlus } from 'react-icons/fa';
@@ -88,7 +89,7 @@ export default function PostedPackagesPage() {
       const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
       setPackages(
         offerings
-          .filter((offering) => !offering.isDraft)
+          .filter((offering) => !offering.isDraft && isCeremonialCategory(offering.category))
           .map((offering) => mapOfferingToCeremonialPackage(offering)),
       );
     } catch (error) {
@@ -212,7 +213,7 @@ export default function PostedPackagesPage() {
                 {/* Package Image */}
                 <div className="relative h-48 bg-gray-200">
                   <img 
-                    src={pkg.photos[0] || '/pack1.png'} 
+                    src={resolveOfferingImage(pkg.photos)} 
                     alt={pkg.title}
                     className="w-full h-full object-cover"
                   />

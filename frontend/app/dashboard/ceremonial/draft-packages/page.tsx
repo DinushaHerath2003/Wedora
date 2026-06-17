@@ -11,6 +11,8 @@ import {
   CeremonialCategory,
   CEREMONIAL_DASHBOARD_BASE,
   normalizeCeremonialCategory,
+  isCeremonialCategory,
+  resolveOfferingImage,
 } from '@/lib/ceremonial-dashboard';
 
 interface Package {
@@ -99,7 +101,7 @@ export default function DraftPackagesPage() {
       const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
       setPackages(
         offerings
-          .filter((offering) => offering.isDraft)
+          .filter((offering) => offering.isDraft && isCeremonialCategory(offering.category))
           .map((offering) => ({
               id: offering.id.toString(),
               category: normalizeCeremonialCategory(offering.category),
@@ -215,7 +217,7 @@ export default function DraftPackagesPage() {
             {filteredPackages.map((pkg) => (
               <div key={pkg.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group">
                 <div className="relative h-48 overflow-hidden">
-                  <img src={pkg.photos[0] || '/pack1.png'} alt={pkg.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                  <img src={resolveOfferingImage(pkg.photos)} alt={pkg.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
                   {pkg.discount && <div className="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg">{pkg.discount} OFF</div>}
                   <div className="absolute top-4 left-4 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-md">Draft</div>
                 </div>

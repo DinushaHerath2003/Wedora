@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Toast, { ToastProps } from '@/components/Toast';
 import CeremonialSidebar from '@/components/ceremonial/CeremonialSidebar';
-import { normalizeCeremonialCategory } from '@/lib/ceremonial-dashboard';
+import { normalizeCeremonialCategory, isCeremonialCategory } from '@/lib/ceremonial-dashboard';
 import { FaCheck, FaTimes, FaHourglassHalf, FaCalendarAlt } from 'react-icons/fa';
 
 type CeremonialCategory = 'poruwa-ceremony' | 'religious-services' | 'cultural-events';
@@ -78,7 +78,7 @@ export default function AcceptBookingPage() {
     try {
       setLoading(true);
       const data = await apiFetch<BookingRow[]>(`/bookings?vendorId=${vendorId}`);
-      setBookings(data);
+      setBookings(data.filter((booking) => isCeremonialCategory(booking.offering?.category)));
     } catch (error) {
       console.error('Failed to load bookings', error);
       setToast({

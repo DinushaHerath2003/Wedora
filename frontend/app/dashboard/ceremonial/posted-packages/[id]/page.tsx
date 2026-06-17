@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Toast, { ToastProps } from '@/components/Toast';
-import { CEREMONIAL_DASHBOARD_BASE, CEREMONIAL_CATEGORY_LABELS, normalizeCeremonialCategory } from '@/lib/ceremonial-dashboard';
+import { CEREMONIAL_DASHBOARD_BASE, CEREMONIAL_CATEGORY_LABELS, normalizeCeremonialCategory, resolveOfferingImage } from '@/lib/ceremonial-dashboard';
 import { FaArrowLeft, FaCalendarAlt, FaCheckCircle } from 'react-icons/fa';
 
 interface PackageDetail {
@@ -94,7 +94,7 @@ export default function CeremonialPackageDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
             <img
-              src={packageData.images?.[0] || '/pack1.png'}
+              src={resolveOfferingImage(packageData.images)}
               alt={packageData.name}
               className="w-full h-80 object-cover"
             />

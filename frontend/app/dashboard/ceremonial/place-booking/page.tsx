@@ -7,6 +7,7 @@ import {
   CeremonialCategory,
   CEREMONIAL_DASHBOARD_BASE,
   normalizeCeremonialCategory,
+  isCeremonialCategory,
 } from '@/lib/ceremonial-dashboard';
 import CeremonialSidebar from '@/components/ceremonial/CeremonialSidebar';
 import { FaEdit, FaTrash, FaCalendarAlt, FaTimes, FaSave } from 'react-icons/fa';
@@ -107,7 +108,9 @@ export default function PlaceBookingPage() {
   const fetchVendorBookings = async (vendorId: number) => {
     try {
       const data = await apiFetch<any[]>(`/bookings?vendorId=${vendorId}`);
-      const mapped = data.map((booking) => ({
+      const mapped = data
+        .filter((booking) => !booking.offering?.category || isCeremonialCategory(booking.offering.category))
+        .map((booking) => ({
         id: booking.id.toString(),
         date: booking.eventDate ? String(booking.eventDate).slice(0, 10) : '',
         time: booking.eventTime || '09:00',
@@ -130,7 +133,7 @@ export default function PlaceBookingPage() {
       const data = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
       setOfferings(
         data
-          .filter((offering) => !offering.isDraft)
+          .filter((offering) => !offering.isDraft && isCeremonialCategory(offering.category))
           .map((offering) => ({
             id: offering.id,
             category: offering.category,
