@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave } from 'react-icons/fa';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave, FaHome } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
@@ -431,10 +431,10 @@ export default function PlaceBookingPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -451,6 +451,18 @@ export default function PlaceBookingPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button onClick={() => router.push('/')} className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Place a Booking</h1>
+              </div>
+            </div>
+          </div>
+
           {/* Banner Section */}
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 

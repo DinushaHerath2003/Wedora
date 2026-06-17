@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 import { addCartItem, getCartCount } from '@/lib/cart-storage';
+import Toast, { ToastProps } from '@/components/Toast';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
@@ -72,6 +73,45 @@ interface BudgetItem {
   quantity: number;
 }
 
+interface CustomerUser {
+  id?: string | number;
+  name: string;
+  email: string;
+  role?: string;
+}
+
+interface OfferingResponse {
+  id: number;
+  name?: string;
+  category?: string;
+  price?: number | string;
+  facilities?: string[];
+  images?: string[];
+  stock?: number;
+  discount?: string;
+  discountType?: string;
+  description?: string;
+  isDraft?: boolean;
+  vendor?: {
+    organizationName?: string;
+    location?: string;
+  };
+}
+
+interface PackageReview {
+  id: number;
+  userId: string;
+  offeringId: number;
+  vendorId: number;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  user?: {
+    name?: string | null;
+    email?: string | null;
+  } | null;
+}
+
 export default function VendorDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -81,9 +121,14 @@ export default function VendorDetailPage() {
   const [savedPackages, setSavedPackages] = useState<string[]>([]);
   const [budgetPackages, setBudgetPackages] = useState<string[]>([]);
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
-  const [user, setUser] = useState<{name: string; email: string} | null>(null);
+  const [user, setUser] = useState<CustomerUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [cartCount, setCartCount] = useState(0);
+  const [toast, setToast] = useState<ToastProps | null>(null);
+  const [reviewsByPackage, setReviewsByPackage] = useState<Record<string, PackageReview[]>>({});
+  const [reviewForms, setReviewForms] = useState<Record<string, { rating: number; comment: string }>>({});
+  const [submittingReviewId, setSubmittingReviewId] = useState<string | null>(null);
+  const [selectedPackageForReview, setSelectedPackageForReview] = useState<Package | null>(null);
 
   // Mock vendor data
   const mockVendor: Vendor = {
@@ -170,7 +215,7 @@ export default function VendorDetailPage() {
     // Load user from localStorage
     const userStr = localStorage.getItem('user');
     if (userStr) {
-      const userData = JSON.parse(userStr);
+      const userData = JSON.parse(userStr) as CustomerUser;
       setUser(userData);
     } else {
       // Demo user
@@ -191,7 +236,18 @@ export default function VendorDetailPage() {
       try {
         setIsLoading(true);
         const vendorIdNum = Number(vendorId);
-        const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorIdNum}`);
+        const [offerings, vendorReviews] = await Promise.all([
+          apiFetch<OfferingResponse[]>(`/offerings?vendorId=${vendorIdNum}`),
+          apiFetch<PackageReview[]>(`/reviews?vendorId=${vendorIdNum}`),
+        ]);
+
+        setReviewsByPackage(
+          (vendorReviews || []).reduce<Record<string, PackageReview[]>>((groups, review) => {
+            const key = review.offeringId.toString();
+            groups[key] = [...(groups[key] || []), review];
+            return groups;
+          }, {})
+        );
         
         const venueOfferings = (offerings || []).filter(
           (offering) => !offering.isDraft && normalizeVenueCategory(offering.category),
@@ -358,6 +414,84 @@ export default function VendorDetailPage() {
     alert(`${pkg.title} added to cart!`);
   };
 
+  const getPackageReviews = (packageId: string) => reviewsByPackage[packageId] || [];
+
+  const getAverageRating = (packageId: string) => {
+    const packageReviews = getPackageReviews(packageId);
+    if (packageReviews.length === 0) return 0;
+    return packageReviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / packageReviews.length;
+  };
+
+  const updateReviewForm = (packageId: string, changes: Partial<{ rating: number; comment: string }>) => {
+    setReviewForms((prev) => ({
+      ...prev,
+      [packageId]: {
+        rating: prev[packageId]?.rating || 5,
+        comment: prev[packageId]?.comment || '',
+        ...changes,
+      },
+    }));
+  };
+
+  const handleSubmitReview = async (pkg: Package) => {
+    const form = reviewForms[pkg.id] || { rating: 5, comment: '' };
+
+    if (!user?.id) {
+      setToast({ message: 'Please log in as a customer before writing a review.', type: 'error' });
+      return;
+    }
+
+    if (user.role === 'vendor') {
+      setToast({ message: 'Vendor accounts can view reviews, but customer accounts should submit them.', type: 'error' });
+      return;
+    }
+
+    if (!form.comment.trim()) {
+      setToast({ message: 'Please write a short review before submitting.', type: 'error' });
+      return;
+    }
+
+    try {
+      setSubmittingReviewId(pkg.id);
+      const created = await apiFetch<PackageReview>('/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: String(user.id),
+          offeringId: Number(pkg.id),
+          vendorId: Number(pkg.vendorId),
+          rating: form.rating,
+          comment: form.comment.trim(),
+        }),
+      });
+
+      const reviewWithUser: PackageReview = {
+        ...created,
+        user: {
+          name: user.name,
+          email: user.email,
+        },
+      };
+
+      setReviewsByPackage((prev) => ({
+        ...prev,
+        [pkg.id]: [reviewWithUser, ...(prev[pkg.id] || [])],
+      }));
+      setReviewForms((prev) => ({
+        ...prev,
+        [pkg.id]: { rating: 5, comment: '' },
+      }));
+      setToast({ message: 'Review submitted successfully.', type: 'success' });
+    } catch (error) {
+      console.error('Failed to submit review', error);
+      setToast({
+        message: `Unable to submit review: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    } finally {
+      setSubmittingReviewId(null);
+    }
+  };
+
   const filteredPackages = selectedCategory === 'all'
     ? packages
     : packages.filter(pkg => pkg.category === selectedCategory);
@@ -370,6 +504,8 @@ export default function VendorDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
       {isLoading ? (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
@@ -609,6 +745,9 @@ export default function VendorDetailPage() {
             const discountedPrice = calculateDiscountedPrice(pkg.pricePerDay, pkg.discount);
             const isSaved = savedPackages.includes(pkg.id);
             const isInBudget = budgetPackages.includes(pkg.id);
+            const packageReviews = getPackageReviews(pkg.id);
+            const averageRating = getAverageRating(pkg.id);
+            const reviewForm = reviewForms[pkg.id] || { rating: 5, comment: '' };
 
             return (
               <div
@@ -642,6 +781,21 @@ export default function VendorDetailPage() {
                 {/* Package Info */}
                 <div className="p-5 flex flex-col h-full">
                   <h3 className="text-lg font-bold text-gray-800 mb-2">{pkg.title}</h3>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex gap-1">
+                      {[...Array(5)].map((_, index) => (
+                        <FaStar
+                          key={index}
+                          size={14}
+                          style={{ color: index < Math.round(averageRating) ? '#fbbf24' : '#d1d5db' }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700">
+                      {averageRating ? averageRating.toFixed(1) : 'No ratings'}
+                    </span>
+                    <span className="text-xs text-gray-500">({packageReviews.length})</span>
+                  </div>
                   
                   {pkg.description && (
                     <p
@@ -714,6 +868,13 @@ export default function VendorDetailPage() {
                         See More
                       </button>
                       <button
+                        onClick={() => setSelectedPackageForReview(pkg)}
+                        className="px-4 py-2 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                        style={{ backgroundColor: '#755A7B' }}
+                      >
+                        📝 Reviews ({packageReviews.length})
+                      </button>
+                      <button
                         onClick={(e) => handleAddToCart(pkg, e)}
                         className="px-4 py-2 rounded-lg font-medium text-white transition-all hover:opacity-90"
                         style={{ backgroundColor: '#755A7B' }}
@@ -753,6 +914,129 @@ export default function VendorDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Reviews Modal */}
+      {selectedPackageForReview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex justify-between items-center">
+              <h3 className="text-2xl font-bold text-gray-800">Reviews for {selectedPackageForReview.title}</h3>
+              <button
+                onClick={() => setSelectedPackageForReview(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Review Stats */}
+              <div className="bg-purple-50 rounded-lg p-4">
+                <div className="flex items-center gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Average Rating</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-3xl font-bold" style={{color: '#755A7B'}}>
+                        {getAverageRating(selectedPackageForReview.id).toFixed(1)}
+                      </span>
+                      <div className="flex gap-0.5">
+                        {[...Array(5)].map((_, index) => (
+                          <FaStar 
+                            key={index} 
+                            style={{ color: index < Math.round(getAverageRating(selectedPackageForReview.id)) ? '#fbbf24' : '#d1d5db' }} 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="ml-auto">
+                    <p className="text-2xl font-bold text-gray-800">{getPackageReviews(selectedPackageForReview.id).length}</p>
+                    <p className="text-sm text-gray-600">Total Reviews</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Review Form */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <p className="font-semibold text-gray-800 mb-3">Write a Review</p>
+                <p className="text-xs font-semibold text-gray-700 mb-3">Rate this package</p>
+                
+                <div className="flex gap-2 mb-4">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const reviewForm = reviewForms[selectedPackageForReview.id] || { rating: 5, comment: '' };
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => updateReviewForm(selectedPackageForReview.id, { rating: star })}
+                        className="text-3xl transition-transform hover:scale-110"
+                        aria-label={`${star} star rating`}
+                      >
+                        <FaStar style={{ color: star <= reviewForm.rating ? '#fbbf24' : '#d1d5db' }} />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {(() => {
+                  const reviewForm = reviewForms[selectedPackageForReview.id] || { rating: 5, comment: '' };
+                  return (
+                    <>
+                      <textarea
+                        value={reviewForm.comment}
+                        onChange={(e) => updateReviewForm(selectedPackageForReview.id, { comment: e.target.value })}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm text-gray-900 placeholder-gray-400 mb-3"
+                        placeholder="Share your experience with this package..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitReview(selectedPackageForReview)}
+                        disabled={submittingReviewId === selectedPackageForReview.id}
+                        className="w-full rounded-lg px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-70"
+                        style={{ backgroundColor: '#755A7B' }}
+                      >
+                        {submittingReviewId === selectedPackageForReview.id ? 'Submitting...' : 'Submit Review'}
+                      </button>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Reviews List */}
+              <div>
+                <h4 className="font-semibold text-gray-800 mb-4">Customer Reviews</h4>
+                <div className="space-y-4">
+                  {getPackageReviews(selectedPackageForReview.id).length > 0 ? (
+                    getPackageReviews(selectedPackageForReview.id).map((review) => (
+                      <div key={review.id} className="rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div>
+                            <p className="font-semibold text-gray-800">{review.user?.name || review.user?.email || 'Customer'}</p>
+                            <p className="text-sm text-gray-500">{new Date(review.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, index) => (
+                              <FaStar key={index} size={14} style={{ color: index < review.rating ? '#fbbf24' : '#d1d5db' }} />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-gray-700 whitespace-pre-wrap">{review.comment || 'No comment provided.'}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center">
+                      <p className="text-gray-500">No reviews yet. Be the first to review this package!</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="bg-white" style={{backgroundColor: '#755A7B'}}>

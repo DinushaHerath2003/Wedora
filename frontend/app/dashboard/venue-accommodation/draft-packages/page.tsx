@@ -143,7 +143,7 @@ export default function DraftPackagesPage() {
 
       setPackages((prev) => prev.filter((pkg) => pkg.id !== id));
       setToast({
-        message: 'Draft package published successfully! 🎉',
+        message: 'Draft package published successfully.',
         type: 'success',
       });
     } catch (error) {
@@ -208,8 +208,8 @@ export default function DraftPackagesPage() {
           <div>
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">General</p>
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"><FaBell /> Notifications</button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"><FaHeart /> Feedback</button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"><FaCog /> Setting</button>
+            <button onClick={() => router.push('/dashboard/venue-accommodation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"><FaHeart /> Feedback</button>
+            <button onClick={() => router.push('/dashboard/venue-accommodation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"><FaCog /> Setting</button>
             <button onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); router.push('/'); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all" style={{ backgroundColor: '#755A7B' }}>
               <FaMoon /> Logout
             </button>
@@ -259,7 +259,7 @@ export default function DraftPackagesPage() {
                     <span className="text-3xl font-bold" style={{ color: '#755A7B' }}>Rs. {pkg.pricePerDay.toLocaleString()}</span>
                     <span className="text-sm text-gray-500 font-medium">/day</span>
                   </div>
-                  <p className="text-xs text-gray-500 mb-4">📅 Saved: {new Date(pkg.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+                  <p className="text-xs text-gray-500 mb-4 flex items-center gap-2"><FaCalendarAlt style={{ color: '#755A7B' }} /> Saved: {new Date(pkg.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
                   <div className="flex flex-col gap-2">
                     <button onClick={() => router.push(`/dashboard/venue-accommodation/posted-packages/${pkg.id}`)} className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500 font-semibold text-emerald-700 bg-white transition-all hover:bg-emerald-600 hover:text-white">
                       <FaEye size={16} /> Preview

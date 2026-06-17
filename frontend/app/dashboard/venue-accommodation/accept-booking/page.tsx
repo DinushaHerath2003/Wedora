@@ -169,10 +169,10 @@ export default function AcceptBookingPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all" style={{ backgroundColor: '#755A7B' }}>
@@ -184,6 +184,18 @@ export default function AcceptBookingPage() {
 
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button onClick={() => router.push('/')} className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Accept Booking</h1>
+              </div>
+            </div>
+          </div>
+
           <div className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" style={{ backgroundImage: 'url(/roombanner.png)', backgroundSize: 'cover', backgroundPosition: 'center', height: '180px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', border: '2px solid rgba(117, 90, 123, 0.2)' }}>
             <h2 className="text-2xl md:text-4xl font-bold text-white mb-2" style={{ textShadow: '3px 3px 6px rgba(0,0,0,0.7)' }}>Accept Booking</h2>
             <p className="text-sm md:text-xl text-white" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.7)' }}>Review customer booking requests and approve available slots</p>

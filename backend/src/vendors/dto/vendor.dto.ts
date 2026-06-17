@@ -19,6 +19,10 @@ export class CreateVendorDto {
   location?: string;
 
   @IsOptional()
+  @IsString()
+  contactPerson?: string;
+
+  @IsOptional()
   @IsArray()
   categories?: string[];
 }

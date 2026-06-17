@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import Toast, { ToastProps } from '@/components/Toast';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome } from 'react-icons/fa';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome, FaCheckCircle, FaTag, FaBoxOpen } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
@@ -29,9 +30,27 @@ interface VendorUser {
   organizationName?: string;
 }
 
+interface OfferingResponse {
+  id: number;
+  name: string;
+  category: string;
+  price: number | string;
+  facilities?: string[];
+  images?: string[];
+  createdAt: string;
+  stock?: number;
+  discount?: string;
+  discountType?: string;
+  isDraft?: boolean;
+}
+
 export default function PostedPackagesPage() {
   const router = useRouter();
-  const [user, setUser] = useState<VendorUser | null>(null);
+  const [user] = useState<VendorUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const userStr = localStorage.getItem('user');
+    return userStr ? (JSON.parse(userStr) as VendorUser) : null;
+  });
   const [activeCategory, setActiveCategory] = useState<VenueCategory>('hotel-rooms');
   const [toast, setToast] = useState<ToastProps | null>(null);
 
@@ -53,52 +72,9 @@ export default function PostedPackagesPage() {
     }
   };
 
-  const getCategoryBannerText = () => {
-    switch(activeCategory) {
-      case 'hotel-rooms':
-        return 'Hotel Rooms Packages';
-      case 'banquet-halls':
-        return 'Banquet Hall Packages';
-      case 'outdoor-venues':
-        return 'Outdoor Venue Packages';
-      default:
-        return 'Posted Packages';
-    }
-  };
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-      const vendorId = Number(userData.id);
-      if (userData.role !== 'vendor') {
-        router.push('/');
-        return;
-      }
-      if (Number.isFinite(vendorId) && vendorId > 0) {
-        console.log('Fetching packages for vendor:', vendorId);
-        fetchVendorPackages(vendorId);
-      } else {
-        router.push('/login');
-      }
-    } else {
-      const demoUser = {
-        id: 0,
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Demo Venue Company'
-      };
-      setUser(demoUser);
-      setPackages([]);
-    }
-  }, [])
-
-  const fetchVendorPackages = async (vendorId: number) => {
+  async function fetchVendorPackages(vendorId: number) {
     try {
-      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      const offerings = await apiFetch<OfferingResponse[]>(`/offerings?vendorId=${vendorId}`);
       console.log('Fetched offerings:', offerings);
       setPackages(
         offerings
@@ -136,7 +112,43 @@ export default function PostedPackagesPage() {
         type: 'error',
       });
     }
+  }
+
+  const getCategoryBannerText = () => {
+    switch(activeCategory) {
+      case 'hotel-rooms':
+        return 'Hotel Rooms Packages';
+      case 'banquet-halls':
+        return 'Banquet Hall Packages';
+      case 'outdoor-venues':
+        return 'Outdoor Venue Packages';
+      default:
+        return 'Posted Packages';
+    }
   };
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    
+    if (userStr) {
+      const userData = JSON.parse(userStr) as VendorUser;
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (Number.isFinite(vendorId) && vendorId > 0) {
+        console.log('Fetching packages for vendor:', vendorId);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchVendorPackages(vendorId);
+      } else {
+        router.push('/login');
+      }
+    } else {
+      router.push('/login');
+    }
+  }, [router]);
+
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -155,7 +167,7 @@ export default function PostedPackagesPage() {
       });
       setPackages(packages.filter(pkg => pkg.id !== id));
       setToast({
-        message: 'Package deleted successfully! ✓',
+        message: 'Package deleted successfully.',
         type: 'success',
       });
     } catch (error) {
@@ -241,10 +253,10 @@ export default function PostedPackagesPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -401,15 +413,17 @@ export default function PostedPackagesPage() {
                   {/* Discount Type Badge */}
                   {pkg.discountType && (
                     <div className="mb-4">
-                      <span className="inline-block bg-linear-to-r from-purple-100 to-purple-50 text-purple-700 px-4 py-1 rounded-full text-xs font-semibold border border-purple-200">
-                        🏷️ {pkg.discountType}
+                      <span className="inline-flex items-center gap-2 bg-linear-to-r from-purple-100 to-purple-50 text-purple-700 px-4 py-1 rounded-full text-xs font-semibold border border-purple-200">
+                        <FaTag /> {pkg.discountType}
                       </span>
                     </div>
                   )}
 
                   {/* Facilities */}
                   <div className="mb-4">
-                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">✨ Facilities:</p>
+                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-2">
+                      <FaCheckCircle style={{ color: '#755A7B' }} /> Facilities:
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {pkg.facilities.slice(0, 3).map((facility, idx) => (
                         <span key={idx} className="text-xs bg-linear-to-r from-purple-50 to-purple-100 text-purple-700 px-3 py-1 rounded-full border border-purple-200 font-medium">
@@ -425,8 +439,8 @@ export default function PostedPackagesPage() {
                   </div>
 
                   {/* Created Date */}
-                  <p className="text-xs text-gray-500 mb-4">
-                    📅 Posted: {new Date(pkg.createdAt).toLocaleDateString('en-US', { 
+                  <p className="text-xs text-gray-500 mb-4 flex items-center gap-2">
+                    <FaCalendarAlt style={{ color: '#755A7B' }} /> Posted: {new Date(pkg.createdAt).toLocaleDateString('en-US', { 
                       year: 'numeric', 
                       month: 'short', 
                       day: 'numeric' 
@@ -443,6 +457,7 @@ export default function PostedPackagesPage() {
                     </button>
                     <div className="flex gap-2">
                       <button 
+                        onClick={() => router.push(`/dashboard/venue-accommodation/posted-packages/${pkg.id}?edit=true`)}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 font-medium transition-all hover:shadow-lg"
                         style={{
                           borderColor: '#755A7B',
@@ -475,9 +490,9 @@ export default function PostedPackagesPage() {
           {/* Empty State */}
           {filteredPackages.length === 0 && (
             <div className="text-center py-16">
-              <div className="text-6xl text-gray-300 mb-4">📦</div>
+              <FaBoxOpen className="mx-auto text-6xl text-gray-300 mb-4" />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">No packages found</h3>
-              <p className="text-gray-500 mb-6">You haven't posted any packages in this category yet.</p>
+              <p className="text-gray-500 mb-6">You have not posted any packages in this category yet.</p>
               <button 
                 onClick={() => router.push('/dashboard/venue-accommodation')}
                 className="px-6 py-3 rounded-lg font-medium text-white"
@@ -508,10 +523,10 @@ export default function PostedPackagesPage() {
               <div>
                 <h4 className="text-white font-bold mb-4">Quick Links</h4>
                 <ul className="space-y-2">
-                  <li><a href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</a></li>
-                  <li><a href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</a></li>
-                  <li><a href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</a></li>
-                  <li><a href="/signup" className="text-purple-100 hover:text-white text-sm transition-colors">Sign Up</a></li>
+                  <li><Link href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</Link></li>
+                  <li><Link href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</Link></li>
+                  <li><Link href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</Link></li>
+                  <li><Link href="/signup" className="text-purple-100 hover:text-white text-sm transition-colors">Sign Up</Link></li>
                 </ul>
               </div>
 

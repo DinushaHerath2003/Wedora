@@ -24,16 +24,18 @@ export default function Toast({ message, type, duration = 4000, onClose }: Toast
 
   if (!isVisible) return null;
 
-  const bgColor = type === 'success' ? 'bg-white' : 'bg-white';
-  const textColor = type === 'success' ? 'text-green-600' : 'text-red-600';
-  const borderColor = type === 'success' ? 'border-green-300' : 'border-red-300';
-  const iconColor = type === 'success' ? '#22c55e' : '#ef4444';
+  const textColor = type === 'success' ? 'text-emerald-700' : 'text-red-700';
+  const borderColor = type === 'success' ? '#10b981' : '#ef4444';
+  const iconColor = type === 'success' ? '#10b981' : '#ef4444';
+  const title = type === 'success' ? 'Success' : 'Needs attention';
 
   return (
     <div
-      className={`fixed top-6 right-6 ${bgColor} ${textColor} px-6 py-4 rounded-lg shadow-xl border-l-4 ${borderColor} flex items-center gap-4 max-w-md animate-in slide-in-from-top fade-in duration-300 z-50`}
+      className={`fixed top-6 right-6 ${textColor} px-5 py-4 rounded-2xl shadow-2xl border bg-white/95 backdrop-blur flex items-start gap-4 max-w-md animate-in slide-in-from-top fade-in duration-300 z-50`}
       style={{
         animation: 'slideInDown 0.3s ease-out',
+        borderColor: 'rgba(17, 24, 39, 0.08)',
+        borderLeft: `5px solid ${borderColor}`,
       }}
     >
       <style>{`
@@ -47,16 +49,6 @@ export default function Toast({ message, type, duration = 4000, onClose }: Toast
             transform: translateY(0);
           }
         }
-        @keyframes slideOutUp {
-          from {
-            opacity: 1;
-            transform: translateY(0);
-          }
-          to {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-        }
       `}</style>
 
       {type === 'success' ? (
@@ -66,15 +58,14 @@ export default function Toast({ message, type, duration = 4000, onClose }: Toast
       )}
 
       <div className="flex-1">
-        <p className="font-semibold text-sm md:text-base">{message}</p>
-        <p className="text-xs mt-1 opacity-75">
-          {type === 'success' ? '✓ Success' : '⚠ Error'}
-        </p>
+        <p className="font-bold text-sm md:text-base text-gray-900">{title}</p>
+        <p className="text-sm mt-1 text-gray-600">{message}</p>
       </div>
 
       <button
         onClick={() => setIsVisible(false)}
-        className="ml-4 hover:opacity-70 transition-opacity shrink-0"
+        className="ml-2 hover:opacity-70 transition-opacity shrink-0"
+        aria-label="Close notification"
       >
         <FaTimes size={18} />
       </button>

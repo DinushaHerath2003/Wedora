@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { uploadImageToCloudinary } from '@/lib/cloudinary';
 import Toast, { ToastProps } from '@/components/Toast';
 import DashboardNavbar from '@/components/DashboardNavbar';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus, FaBuilding, FaHotel, FaTree } from 'react-icons/fa';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus, FaBuilding, FaHotel, FaTree, FaHome, FaCheck } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
@@ -133,7 +133,7 @@ export default function VenueAccommodationDashboard() {
           photos: Array.isArray(data.images) ? data.images : [],
         });
         setToast({
-          message: 'Draft package loaded for editing. Update and save when ready.',
+          message: 'Package loaded for editing. Update and save when ready.',
           type: 'success',
         });
       } catch (error) {
@@ -292,7 +292,11 @@ export default function VenueAccommodationDashboard() {
         discountType: createdPackage.discountType,
       };
 
-      setPackages((prev) => [...prev, packageData]);
+      setPackages((prev) =>
+        editingPackageId
+          ? prev.map((pkg) => (pkg.id === packageData.id ? packageData : pkg))
+          : [...prev, packageData]
+      );
       setNewPackage({
         title: '',
         pricePerDay: '',
@@ -309,8 +313,8 @@ export default function VenueAccommodationDashboard() {
       setEditingPackageId(null);
       setToast({
         message: editingPackageId
-          ? (isDraft ? 'Draft updated successfully! 📋' : 'Package published successfully! 🎉')
-          : (isDraft ? 'Package saved as draft successfully! 📋' : 'Package posted successfully! 🎉'),
+          ? (isDraft ? 'Draft updated successfully.' : 'Package updated successfully.')
+          : (isDraft ? 'Package saved as draft successfully.' : 'Package posted successfully.'),
         type: 'success',
       });
     } catch (err) {
@@ -394,10 +398,10 @@ export default function VenueAccommodationDashboard() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/venue-accommodation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -415,6 +419,21 @@ export default function VenueAccommodationDashboard() {
       <div className="flex-1 flex flex-col">
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button
+                onClick={() => router.push('/')}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+              >
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">{editingPackageId ? 'Edit Package' : 'Post Package'}</h1>
+              </div>
+            </div>
+          </div>
+
           {/* Banner Section */}
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
@@ -484,7 +503,7 @@ export default function VenueAccommodationDashboard() {
                 <span>/</span>
                 <span className="font-semibold" style={{color: '#755A7B'}}>add new package</span>
               </div>
-              <h2 className="text-xl md:text-2xl font-bold text-gray-800">{editingPackageId ? 'Edit Draft Package' : 'Add New Package'}</h2>
+              <h2 className="text-xl md:text-2xl font-bold text-gray-800">{editingPackageId ? 'Edit Package' : 'Add New Package'}</h2>
             </div>
             <div className="flex gap-3">
               <button 
@@ -501,7 +520,7 @@ export default function VenueAccommodationDashboard() {
                 className="px-4 md:px-6 py-2.5 rounded-lg font-medium text-white hover:opacity-90 transition-opacity flex items-center gap-2 text-sm md:text-base"
                 style={{backgroundColor: '#755A7B'}}
               >
-                {editingPackageId ? '✓ Publish Package' : '✓ Add Package'}
+                <FaCheck /> {editingPackageId ? 'Save Changes' : 'Add Package'}
               </button>
             </div>
           </div>

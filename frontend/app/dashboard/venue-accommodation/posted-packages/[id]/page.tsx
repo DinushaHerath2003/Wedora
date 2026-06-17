@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
-import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
 import Toast, { ToastProps } from '@/components/Toast';
-import { FaArrowLeft, FaHome, FaPhone, FaEnvelope, FaStar, FaHeart, FaShare, FaCheckCircle, FaClock, FaMoneyBillWave, FaCalculator, FaCalendarAlt } from 'react-icons/fa';
+import { FaArrowLeft, FaHome, FaPhone, FaEnvelope, FaStar, FaShare, FaCheckCircle, FaClock, FaCalendarAlt, FaSave, FaTimes } from 'react-icons/fa';
 
 interface PackageDetail {
   id: number;
@@ -24,51 +23,61 @@ interface PackageDetail {
   vendorId: number;
 }
 
-interface VendorUser {
-  id?: number | string;
-  name: string;
-  email: string;
-  role: string;
-  organizationName?: string;
+interface CurrentUser {
+  id?: string | number;
+  name?: string;
+  email?: string;
+  role?: string;
 }
 
-interface BudgetItem {
-  id: string;
-  category: string;
-  name: string;
-  price: number;
-  quantity: number;
+interface PackageReview {
+  id: number;
+  userId: string;
+  offeringId: number;
+  vendorId: number;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  user?: {
+    name?: string | null;
+    email?: string | null;
+  } | null;
 }
 
 export default function PackageDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const packageId = params.id as string;
+  const isEditMode = searchParams.get('edit') === 'true';
   
-  const [user, setUser] = useState<VendorUser | null>(null);
   const [packageData, setPackageData] = useState<PackageDetail | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<ToastProps | null>(null);
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [budgetPackages, setBudgetPackages] = useState<string[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [reviews, setReviews] = useState<PackageReview[]>([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    stock: '',
+    discount: '',
+    discountType: '',
+    facilities: '',
+  });
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
+    if (!userStr) {
       router.push('/login');
+      return;
     }
+    setCurrentUser(JSON.parse(userStr) as CurrentUser);
   }, [router]);
-
-  useEffect(() => {
-    const storageKeys = getBudgetStorageKeys(user);
-    const scopedBudget = safeParseArray<string>(localStorage.getItem(storageKeys.budgetPackages));
-    const legacyBudget = safeParseArray<string>(localStorage.getItem('budgetPackages'));
-    setBudgetPackages([...scopedBudget, ...legacyBudget]);
-  }, [user]);
 
   useEffect(() => {
     const fetchPackageDetail = async () => {
@@ -76,6 +85,15 @@ export default function PackageDetailPage() {
         setIsLoading(true);
         const data = await apiFetch<PackageDetail>(`/offerings/${packageId}`);
         setPackageData(data);
+        setEditForm({
+          name: data.name || '',
+          description: data.description || '',
+          price: String(data.price || ''),
+          stock: data.stock ? String(data.stock) : '',
+          discount: data.discount || '',
+          discountType: data.discountType || '',
+          facilities: data.facilities?.join(', ') || '',
+        });
       } catch (error) {
         console.error('Failed to load package details:', error);
         setToast({
@@ -93,6 +111,21 @@ export default function PackageDetailPage() {
     }
   }, [packageId, router]);
 
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const data = await apiFetch<PackageReview[]>(`/reviews?offeringId=${packageId}`);
+        setReviews(data || []);
+      } catch (error) {
+        console.error('Failed to load package reviews', error);
+      }
+    };
+
+    if (packageId) {
+      fetchReviews();
+    }
+  }, [packageId]);
+
   const getCategoryDisplay = (category: string) => {
     const categoryMap: { [key: string]: string } = {
       'hotel-rooms': 'Hotel Rooms',
@@ -105,52 +138,106 @@ export default function PackageDetailPage() {
     return categoryMap[category] || category;
   };
 
-  const handleAddToBudgetCalculator = () => {
+  const handleBookMeeting = () => {
+    router.push(`/services/venue-accommodation/${packageData?.vendorId}/book-meeting/${packageData?.id}`);
+  };
+
+  const handleSaveChanges = async () => {
     if (!packageData) return;
-    const storageKeys = getBudgetStorageKeys(user);
 
-    if (!budgetPackages.includes(packageData.id.toString())) {
-      const updatedBudgetPackages = [...budgetPackages, packageData.id.toString()];
-      setBudgetPackages(updatedBudgetPackages);
-      localStorage.setItem(storageKeys.budgetPackages, JSON.stringify(updatedBudgetPackages));
+    if (!editForm.name.trim() || !editForm.price.trim()) {
+      setToast({ message: 'Package name and price are required.', type: 'error' });
+      return;
+    }
 
-      const canonicalBudgetItems = safeParseArray<BudgetItem>(localStorage.getItem(storageKeys.budgetItems));
-      canonicalBudgetItems.push({
-        id: `pkg-${packageData.id}`,
-        category: packageData.category,
-        name: packageData.name,
-        price: packageData.price,
-        quantity: 1,
+    try {
+      const updated = await apiFetch<PackageDetail>(`/offerings/${packageData.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          description: editForm.description.trim(),
+          category: packageData.category,
+          price: Number(editForm.price),
+          facilities: editForm.facilities.split(',').map((item) => item.trim()).filter(Boolean),
+          roomType: packageData.roomType,
+          stock: editForm.stock ? Number(editForm.stock) : undefined,
+          discount: editForm.discount.trim() || undefined,
+          discountType: editForm.discountType.trim() || undefined,
+          images: packageData.images,
+          vendorId: packageData.vendorId,
+          isDraft: packageData.isDraft,
+        }),
       });
-      localStorage.setItem(storageKeys.budgetItems, JSON.stringify(canonicalBudgetItems));
 
-      const budgetPackageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
-      budgetPackageDetails.push({
-        packageId: packageData.id.toString(),
-        vendorId: packageData.vendorId.toString(),
-        category: packageData.category,
-        title: packageData.name,
-        price: packageData.price,
-        image: packageData.images[0] || '/pack1.png',
-        vendorName: 'Venue Accommodation',
-        quantity: 1,
+      setPackageData(updated);
+      setEditForm({
+        name: updated.name || '',
+        description: updated.description || '',
+        price: String(updated.price || ''),
+        stock: updated.stock ? String(updated.stock) : '',
+        discount: updated.discount || '',
+        discountType: updated.discountType || '',
+        facilities: updated.facilities?.join(', ') || '',
       });
-      localStorage.setItem(storageKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
-
+      setToast({ message: 'Package saved successfully.', type: 'success' });
+      router.replace(`/dashboard/venue-accommodation/posted-packages/${packageData.id}`);
+    } catch (error) {
+      console.error('Failed to save package changes', error);
       setToast({
-        message: 'Package added to budget calculator.',
-        type: 'success',
-      });
-    } else {
-      setToast({
-        message: 'Package is already in your budget calculator.',
+        message: `Unable to save package: ${error instanceof Error ? error.message : 'Unknown error'}`,
         type: 'error',
       });
     }
   };
 
-  const handleBookMeeting = () => {
-    router.push(`/services/venue-accommodation/${packageData?.vendorId}/book-meeting/${packageData?.id}`);
+  const handleSubmitReview = async () => {
+    if (!packageData) return;
+
+    if (!currentUser?.id) {
+      setToast({ message: 'Please log in before writing a review.', type: 'error' });
+      return;
+    }
+
+    if (!reviewComment.trim()) {
+      setToast({ message: 'Please write a short review before submitting.', type: 'error' });
+      return;
+    }
+
+    try {
+      setSubmittingReview(true);
+      const created = await apiFetch<PackageReview>('/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: String(currentUser.id),
+          offeringId: packageData.id,
+          vendorId: packageData.vendorId,
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+        }),
+      });
+
+      setReviews((prev) => [
+        {
+          ...created,
+          user: {
+            name: currentUser.name || currentUser.email || 'Customer',
+            email: currentUser.email,
+          },
+        },
+        ...prev,
+      ]);
+      setReviewRating(5);
+      setReviewComment('');
+      setToast({ message: 'Review submitted successfully.', type: 'success' });
+    } catch (error) {
+      console.error('Failed to submit review', error);
+      setToast({
+        message: `Unable to submit review: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   if (isLoading) {
@@ -170,9 +257,9 @@ export default function PackageDetailPage() {
     return (
       <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: '#f5f5f7' }}>
         <div className="text-center">
-          <div className="text-5xl mb-4">📦</div>
+          <FaCheckCircle className="mx-auto text-5xl text-gray-300 mb-4" />
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Package Not Found</h2>
-          <p className="text-gray-600 mb-6">The package you're looking for doesn't exist.</p>
+          <p className="text-gray-600 mb-6">The package is not available.</p>
           <button
             onClick={() => router.push('/dashboard/venue-accommodation/posted-packages')}
             className="px-6 py-2 rounded-lg font-medium text-white transition-all"
@@ -186,6 +273,9 @@ export default function PackageDetailPage() {
   }
 
   const mainImage = packageData.images && packageData.images.length > 0 ? packageData.images[selectedImageIndex] : '/pack1.png';
+  const averageRating = reviews.length > 0
+    ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length
+    : 0;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f5f5f7' }}>
@@ -270,29 +360,60 @@ export default function PackageDetailPage() {
 
             {/* Package Description */}
             <div className="bg-white rounded-xl shadow-md p-6 md:p-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">About This Package</h2>
-              <div className="prose prose-sm max-w-none">
-                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {packageData.description}
-                </p>
-              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">{isEditMode ? 'Edit Package Details' : 'About This Package'}</h2>
+              {isEditMode ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Package Name</label>
+                    <input
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      rows={8}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="prose prose-sm max-w-none">
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {packageData.description}
+                  </p>
+                </div>
+              )}
 
               {/* Facilities Section */}
-              {packageData.facilities && packageData.facilities.length > 0 && (
+              {(isEditMode || (packageData.facilities && packageData.facilities.length > 0)) && (
                 <div className="mt-8 pt-8 border-t">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4">✨ Included Facilities</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {packageData.facilities.map((facility, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: 'rgba(117, 90, 123, 0.05)' }}
-                      >
-                        <FaCheckCircle style={{ color: '#755A7B' }} />
-                        <span className="text-gray-700 font-medium">{facility}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">Included Facilities</h3>
+                  {isEditMode ? (
+                    <input
+                      value={editForm.facilities}
+                      onChange={(e) => setEditForm({ ...editForm, facilities: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                      placeholder="WiFi, AC, Parking"
+                    />
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {packageData.facilities.map((facility, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-3 p-3 rounded-lg"
+                          style={{ backgroundColor: 'rgba(117, 90, 123, 0.05)' }}
+                        >
+                          <FaCheckCircle style={{ color: '#755A7B' }} />
+                          <span className="text-gray-700 font-medium">{facility}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -313,10 +434,24 @@ export default function PackageDetailPage() {
             {/* Price Card */}
             <div className="bg-white rounded-xl shadow-md p-6 mb-6 sticky top-24">
               <div className="mb-6">
-                <h2 className="text-3xl font-bold mb-2" style={{ color: '#755A7B' }}>
-                  Rs. {packageData.price.toLocaleString()}
-                </h2>
-                <p className="text-gray-500 text-sm">per day</p>
+                {isEditMode ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Price per day</label>
+                    <input
+                      type="number"
+                      value={editForm.price}
+                      onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="text-3xl font-bold mb-2" style={{ color: '#755A7B' }}>
+                      Rs. {packageData.price.toLocaleString()}
+                    </h2>
+                    <p className="text-gray-500 text-sm">per day</p>
+                  </>
+                )}
               </div>
 
               {/* Stock Status */}
@@ -325,7 +460,15 @@ export default function PackageDetailPage() {
                   <FaClock style={{ color: '#755A7B' }} />
                   <span className="font-semibold text-gray-800">Availability</span>
                 </div>
-                {packageData.stock !== undefined ? (
+                {isEditMode ? (
+                  <input
+                    type="number"
+                    value={editForm.stock}
+                    onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                    placeholder="Available stock"
+                  />
+                ) : packageData.stock !== undefined ? (
                   <p className={`text-sm font-medium ${packageData.stock > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {packageData.stock > 0 ? `${packageData.stock} Available` : 'Out of Stock'}
                   </p>
@@ -335,7 +478,25 @@ export default function PackageDetailPage() {
               </div>
 
               {/* Discount Info */}
-              {packageData.discount && packageData.discountType && (
+              {isEditMode ? (
+                <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: 'rgba(220, 38, 38, 0.05)' }}>
+                  <p className="text-xs font-semibold text-red-600 mb-3">SPECIAL OFFER</p>
+                  <div className="space-y-3">
+                    <input
+                      value={editForm.discountType}
+                      onChange={(e) => setEditForm({ ...editForm, discountType: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                      placeholder="Discount type"
+                    />
+                    <input
+                      value={editForm.discount}
+                      onChange={(e) => setEditForm({ ...editForm, discount: e.target.value })}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
+                      placeholder="Discount amount"
+                    />
+                  </div>
+                </div>
+              ) : packageData.discount && packageData.discountType && (
                 <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: 'rgba(220, 38, 38, 0.05)' }}>
                   <p className="text-xs font-semibold text-red-600 mb-1">SPECIAL OFFER</p>
                   <p className="text-sm font-medium text-gray-800">{packageData.discountType}</p>
@@ -351,33 +512,31 @@ export default function PackageDetailPage() {
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-3">
-                <button
-                  onClick={() => setIsFavorite(!isFavorite)}
-                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all border-2 ${
-                    isFavorite
-                      ? 'border-red-500 bg-red-50 text-red-600'
-                      : 'border-gray-300 text-gray-700 hover:border-red-500 hover:bg-red-50'
-                  }`}
-                >
-                  <FaHeart /> {isFavorite ? 'Saved' : 'Save'}
-                </button>
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90" style={{ backgroundColor: '#755A7B' }}>
-                  <FaMoneyBillWave /> Book Now
-                </button>
-                <button
-                  onClick={handleAddToBudgetCalculator}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium border-2 transition-all"
-                  style={{ borderColor: '#755A7B', color: '#755A7B', backgroundColor: 'white' }}
-                >
-                  <FaCalculator /> Add to Budget Calculator
-                </button>
-                <button
-                  onClick={handleBookMeeting}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
-                  style={{ backgroundColor: '#10b981' }}
-                >
-                  <FaCalendarAlt /> Book a Meeting
-                </button>
+                {isEditMode ? (
+                  <>
+                    <button
+                      onClick={handleSaveChanges}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                      style={{ backgroundColor: '#755A7B' }}
+                    >
+                      <FaSave /> Save Changes
+                    </button>
+                    <button
+                      onClick={() => router.replace(`/dashboard/venue-accommodation/posted-packages/${packageData.id}`)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-gray-700 transition-all border-2 border-gray-300 hover:border-gray-400"
+                    >
+                      <FaTimes /> Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleBookMeeting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-white transition-all hover:opacity-90"
+                    style={{ backgroundColor: '#10b981' }}
+                  >
+                    <FaCalendarAlt /> Book a Meeting
+                  </button>
+                )}
                 <button className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium text-gray-700 transition-all border-2 border-gray-300 hover:border-gray-400">
                   <FaShare /> Share
                 </button>
@@ -411,15 +570,71 @@ export default function PackageDetailPage() {
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex gap-1">
                   {[...Array(5)].map((_, i) => (
-                    <FaStar key={i} size={18} style={{ color: '#fbbf24' }} />
+                    <FaStar key={i} size={18} style={{ color: i < Math.round(averageRating) ? '#fbbf24' : '#d1d5db' }} />
                   ))}
                 </div>
-                <span className="text-sm font-semibold text-gray-800">5.0</span>
-                <span className="text-sm text-gray-500">(12 reviews)</span>
+                <span className="text-sm font-semibold text-gray-800">{averageRating ? averageRating.toFixed(1) : 'No ratings'}</span>
+                <span className="text-sm text-gray-500">({reviews.length} reviews)</span>
               </div>
-              <button className="w-full px-4 py-2 rounded-lg font-medium text-gray-700 border-2 border-gray-300 hover:border-gray-400 transition-colors">
-                Read All Reviews
-              </button>
+
+              {!isEditMode && (
+                <div className="rounded-xl border border-gray-200 p-4 mb-5">
+                  <p className="text-sm font-semibold text-gray-800 mb-3">Write a review</p>
+                  <div className="flex gap-2 mb-3">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setReviewRating(star)}
+                        className="text-2xl transition-transform hover:scale-110"
+                        aria-label={`${star} star rating`}
+                      >
+                        <FaStar style={{ color: star <= reviewRating ? '#fbbf24' : '#d1d5db' }} />
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    rows={4}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900 placeholder-gray-400"
+                    placeholder="Share your experience with this package..."
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSubmitReview}
+                    disabled={submittingReview}
+                    className="mt-3 w-full rounded-lg px-4 py-3 font-semibold text-white transition hover:opacity-90 disabled:opacity-70"
+                    style={{ backgroundColor: '#755A7B' }}
+                  >
+                    {submittingReview ? 'Submitting...' : 'Submit Review'}
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {reviews.length > 0 ? reviews.map((review) => (
+                  <div key={review.id} className="rounded-lg border border-gray-200 p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-800">{review.user?.name || review.user?.email || 'Customer'}</p>
+                        <p className="text-xs text-gray-500">{new Date(review.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        {[...Array(5)].map((_, i) => (
+                          <FaStar key={i} size={14} style={{ color: i < review.rating ? '#fbbf24' : '#d1d5db' }} />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{review.comment || 'No comment provided.'}</p>
+                  </div>
+                )) : (
+                  <div className="rounded-lg border border-dashed border-gray-300 p-5 text-center">
+                    <FaStar className="mx-auto text-3xl text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-500">No reviews yet for this package.</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
