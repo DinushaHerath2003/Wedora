@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave, FaHome } from 'react-icons/fa';
 
 type PhotoCategory = 'wedding-photography' | 'pre-wedding-shoots' | 'videography';
 
@@ -18,6 +19,7 @@ interface Booking {
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -27,9 +29,13 @@ interface VendorUser {
 export default function PlaceBookingPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
+  
+  const organizationLabel = user?.organizationName || user?.name || 'Photography Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
   const [activeCategory, setActiveCategory] = useState<PhotoCategory>('wedding-photography');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [offerings, setOfferings] = useState<{ id: number; category: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -40,6 +46,20 @@ export default function PlaceBookingPage() {
     description: '',
     time: '10:00'
   });
+  const [bookingError, setBookingError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  const timeSlots = [
+    '09:00',
+    '10:00',
+    '11:00',
+    '12:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+    '17:00',
+  ];
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -50,7 +70,7 @@ export default function PlaceBookingPage() {
       case 'videography':
         return '/photography3.png';
       default:
-        return '/ven1.png';
+        return '/photography.png';
     }
   };
 
@@ -59,7 +79,7 @@ export default function PlaceBookingPage() {
       case 'wedding-photography':
         return 'Wedding Photography Bookings';
       case 'pre-wedding-shoots':
-        return 'Pre-Wedding Shoot Bookings';
+        return 'Pre-Wedding Shoots Bookings';
       case 'videography':
         return 'Videography Bookings';
       default:
@@ -67,26 +87,95 @@ export default function PlaceBookingPage() {
     }
   };
 
+  const normalizePhotoCategory = (category: string | undefined): PhotoCategory => {
+    if (category === 'pre-wedding-shoots') {
+      return 'pre-wedding-shoots';
+    }
+    if (category === 'videography') {
+      return 'videography';
+    }
+    if (category === 'wedding-photography') {
+      return 'wedding-photography';
+    }
+    return 'wedding-photography';
+  };
+
+  const getPackageCategory = (category: PhotoCategory) => {
+    switch (category) {
+      case 'wedding-photography':
+        return 'wedding-photography';
+      case 'pre-wedding-shoots':
+        return 'pre-wedding-shoots';
+      case 'videography':
+        return 'videography';
+      default:
+        return 'wedding-photography';
+    }
+  };
+
+  const isTimeSlotBooked = (dateStr: string, timeSlot: string, ignoreBookingId?: string) => {
+    return bookings.some(booking =>
+      booking.date === dateStr &&
+      booking.category === activeCategory &&
+      booking.time === timeSlot &&
+      booking.id !== ignoreBookingId
+    );
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (!Number.isNaN(vendorId) && vendorId > 0) {
+        fetchVendorBookings(vendorId);
+        fetchVendorOfferings(vendorId);
+      } else {
+        router.push('/login');
+      }
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Perfect Moments Studio'
-      });
+      router.push('/login');
     }
+  }, [router]);
 
-    const savedBookings = localStorage.getItem('photographyBookings');
-    if (savedBookings) {
-      setBookings(JSON.parse(savedBookings));
+  const fetchVendorBookings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/bookings?vendorId=${vendorId}`);
+      const mapped = data.map((booking) => ({
+        id: booking.id.toString(),
+        date: booking.eventDate ? booking.eventDate.slice(0, 10) : '',
+        time: booking.eventTime || '09:00',
+        clientName: booking.clientName || booking.user?.name || 'Guest',
+        clientEmail: booking.clientEmail || booking.user?.email || '',
+        clientPhone: booking.clientPhone || '',
+        description: booking.notes || '',
+        category: normalizePhotoCategory(booking.offering?.category) as PhotoCategory,
+      }));
+      setBookings(mapped);
+    } catch (error) {
+      console.error('Failed to load vendor bookings', error);
+      setApiError('Unable to load bookings from backend. Showing local bookings only.');
     }
-  }, []);
+  };
+
+  const fetchVendorOfferings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setOfferings(
+        data.map((offering) => ({
+          id: offering.id,
+          category: offering.category,
+        }))
+      );
+    } catch (error) {
+      console.error('Failed to load offerings', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -101,6 +190,7 @@ export default function PlaceBookingPage() {
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
+
     return { daysInMonth, startingDayOfWeek };
   };
 
@@ -112,59 +202,121 @@ export default function PlaceBookingPage() {
   };
 
   const hasBookingOnDate = (dateStr: string) => {
-    return bookings.some(booking => booking.date === dateStr && booking.category === activeCategory);
+    return bookings.some(
+      booking => booking.date === dateStr && booking.category === activeCategory
+    );
   };
 
   const getBookingsForDate = (dateStr: string) => {
-    return bookings.filter(booking => booking.date === dateStr && booking.category === activeCategory);
+    return bookings.filter(
+      booking => booking.date === dateStr && booking.category === activeCategory
+    );
   };
 
   const handleDateClick = (dateStr: string) => {
     setSelectedDate(dateStr);
     setShowBookingModal(true);
     setEditingBooking(null);
+    setBookingError('');
     setNewBooking({
       clientName: '',
       clientEmail: '',
       clientPhone: '',
       description: '',
-      time: '10:00'
+      time: '09:00'
     });
   };
 
-  const handleSaveBooking = () => {
+  const handleSaveBooking = async () => {
     if (!selectedDate) return;
 
-    if (editingBooking) {
-      const updatedBookings = bookings.map(booking =>
-        booking.id === editingBooking.id
-          ? {
-              ...booking,
-              clientName: newBooking.clientName,
-              clientEmail: newBooking.clientEmail,
-              clientPhone: newBooking.clientPhone,
-              description: newBooking.description,
-              time: newBooking.time
-            }
-          : booking
-      );
-      setBookings(updatedBookings);
-      localStorage.setItem('photographyBookings', JSON.stringify(updatedBookings));
-    } else {
-      const booking: Booking = {
-        id: Date.now().toString(),
-        date: selectedDate,
-        clientName: newBooking.clientName,
-        clientEmail: newBooking.clientEmail,
-        clientPhone: newBooking.clientPhone,
-        description: newBooking.description,
-        category: activeCategory,
-        time: newBooking.time
-      };
+    const duplicateSlot = bookings.some(booking =>
+      booking.date === selectedDate &&
+      booking.category === activeCategory &&
+      booking.time === newBooking.time &&
+      (!editingBooking || booking.id !== editingBooking.id)
+    );
 
-      const updatedBookings = [...bookings, booking];
-      setBookings(updatedBookings);
-      localStorage.setItem('photographyBookings', JSON.stringify(updatedBookings));
+    if (duplicateSlot) {
+      setBookingError('This time slot is already booked for the selected date. Please choose a different time.');
+      return;
+    }
+
+    const vendorId = Number((user as any).id);
+    const offeringCategory = getPackageCategory(activeCategory);
+    const selectedOffering = offerings.find((offering) => offering.category === offeringCategory) || offerings[0];
+
+    if (!user || Number.isNaN(vendorId) || vendorId <= 0) {
+      setBookingError('Unable to save booking: invalid vendor session.');
+      return;
+    }
+
+    const payload = {
+      offeringId: selectedOffering?.id ?? 0,
+      vendorId,
+      eventDate: selectedDate,
+      eventTime: newBooking.time,
+      clientName: newBooking.clientName,
+      clientEmail: newBooking.clientEmail,
+      clientPhone: newBooking.clientPhone,
+      notes: newBooking.description,
+    };
+
+    try {
+      if (editingBooking) {
+        await apiFetch<any>(`/bookings/${editingBooking.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        const updatedBookings = bookings.map((booking) =>
+          booking.id === editingBooking.id
+            ? {
+                ...booking,
+                clientName: newBooking.clientName,
+                clientEmail: newBooking.clientEmail,
+                clientPhone: newBooking.clientPhone,
+                description: newBooking.description,
+                time: newBooking.time,
+              }
+            : booking
+        );
+        setBookings(updatedBookings);
+      } else {
+        if (!selectedOffering) {
+          setBookingError('No service package was found for this category. Please add a package first.');
+          return;
+        }
+
+        const createdBooking = await apiFetch<any>('/bookings', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        const booking: Booking = {
+          id: createdBooking.id.toString(),
+          date: selectedDate,
+          clientName: newBooking.clientName,
+          clientEmail: newBooking.clientEmail,
+          clientPhone: newBooking.clientPhone,
+          description: newBooking.description,
+          category: activeCategory,
+          time: newBooking.time,
+        };
+        setBookings((prev) => [...prev, booking]);
+      }
+
+      setShowBookingModal(false);
+      setNewBooking({
+        clientName: '',
+        clientEmail: '',
+        clientPhone: '',
+        description: '',
+        time: '10:00'
+      });
+      setBookingError('');
+    } catch (error) {
+      console.error('Failed to save booking', error);
+      setBookingError('Unable to save booking. Please try again later.');
     }
 
     setShowBookingModal(false);
@@ -179,6 +331,7 @@ export default function PlaceBookingPage() {
 
   const handleEditBooking = (booking: Booking) => {
     setEditingBooking(booking);
+    setBookingError('');
     setNewBooking({
       clientName: booking.clientName,
       clientEmail: booking.clientEmail,
@@ -188,12 +341,21 @@ export default function PlaceBookingPage() {
     });
   };
 
-  const handleDeleteBooking = (id: string) => {
-    if (confirm('Are you sure you want to delete this booking?')) {
-      const updatedBookings = bookings.filter(booking => booking.id !== id);
-      setBookings(updatedBookings);
-      localStorage.setItem('photographyBookings', JSON.stringify(updatedBookings));
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) {
+      return;
     }
+
+    try {
+      await apiFetch<any>(`/bookings/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete booking', error);
+    }
+
+    const updatedBookings = bookings.filter(booking => booking.id !== id);
+    setBookings(updatedBookings);
   };
 
   const nextMonth = () => {
@@ -209,14 +371,15 @@ export default function PlaceBookingPage() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              P
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Perfect Moments</h2>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
               <p className="text-xs text-gray-500">photography & videography</p>
             </div>
           </div>
@@ -225,26 +388,40 @@ export default function PlaceBookingPage() {
         <nav className="flex-1 p-4">
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography/overview')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaChartBar /> Overview
             </button>
-            <button onClick={() => router.push('/dashboard/photography')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaPlus /> Post Package
             </button>
-            <button onClick={() => router.push('/dashboard/photography/posted-packages')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography/posted-packages')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaFileInvoice /> Posted Packages
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaEdit /> Draft Package
             </button>
           </div>
 
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Appointment</p>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors" style={{backgroundColor: '#755A7B', color: 'white'}}>
+            <button 
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors"
+              style={{backgroundColor: '#755A7B', color: 'white'}}
+            >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/photography/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -254,68 +431,142 @@ export default function PlaceBookingPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/photography/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/photography/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all" style={{backgroundColor: '#755A7B'}}>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all"
+              style={{backgroundColor: '#755A7B'}}
+            >
               <FaMoon /> Logout
             </button>
           </div>
         </nav>
       </aside>
 
+      {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" style={{backgroundImage: `url(${getCategoryBannerImage()})`, backgroundSize: 'cover', backgroundPosition: 'center', height: '200px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', border: '2px solid rgba(117, 90, 123, 0.2)'}}>
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button onClick={() => router.push('/')} className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Place a Booking</h1>
+              </div>
+            </div>
+          </div>
+
+          {/* Banner Section */}
+          <div 
+            className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
+            style={{
+              backgroundImage: `url(${getCategoryBannerImage()})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              height: '200px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+              border: '2px solid rgba(117, 90, 123, 0.2)'
+            }}
+          >
             <h2 className="text-2xl md:text-4xl font-bold text-white mb-2" style={{textShadow: '3px 3px 6px rgba(0,0,0,0.7)'}}>{getCategoryBannerText()}</h2>
             <p className="text-sm md:text-xl text-white" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.7)'}}>Schedule client meetings and manage appointments</p>
           </div>
 
+          {/* Category Tabs */}
           <div className="mb-6">
             <div className="flex gap-2 md:gap-6 justify-center items-center overflow-x-auto pb-2">
-              <button onClick={() => setActiveCategory('wedding-photography')} className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap" style={{borderColor: activeCategory === 'wedding-photography' ? '#755A7B' : 'transparent', color: activeCategory === 'wedding-photography' ? '#755A7B' : '#999', fontWeight: activeCategory === 'wedding-photography' ? 'bold' : 'normal', background: activeCategory === 'wedding-photography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'}}>
+              <button
+                onClick={() => setActiveCategory('wedding-photography')}
+                className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap"
+                style={{
+                  borderColor: activeCategory === 'wedding-photography' ? '#755A7B' : 'transparent',
+                  color: activeCategory === 'wedding-photography' ? '#755A7B' : '#999',
+                  fontWeight: activeCategory === 'wedding-photography' ? 'bold' : 'normal',
+                  background: activeCategory === 'wedding-photography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'
+                }}
+              >
                 Wedding Photography
               </button>
-              <button onClick={() => setActiveCategory('pre-wedding-shoots')} className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap" style={{borderColor: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : 'transparent', color: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : '#999', fontWeight: activeCategory === 'pre-wedding-shoots' ? 'bold' : 'normal', background: activeCategory === 'pre-wedding-shoots' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'}}>
+              <button
+                onClick={() => setActiveCategory('pre-wedding-shoots')}
+                className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap"
+                style={{
+                  borderColor: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : 'transparent',
+                  color: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : '#999',
+                  fontWeight: activeCategory === 'pre-wedding-shoots' ? 'bold' : 'normal',
+                  background: activeCategory === 'pre-wedding-shoots' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'
+                }}
+              >
                 Pre-Wedding Shoots
               </button>
-              <button onClick={() => setActiveCategory('videography')} className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap" style={{borderColor: activeCategory === 'videography' ? '#755A7B' : 'transparent', color: activeCategory === 'videography' ? '#755A7B' : '#999', fontWeight: activeCategory === 'videography' ? 'bold' : 'normal', background: activeCategory === 'videography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'}}>
+              <button
+                onClick={() => setActiveCategory('videography')}
+                className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap"
+                style={{
+                  borderColor: activeCategory === 'videography' ? '#755A7B' : 'transparent',
+                  color: activeCategory === 'videography' ? '#755A7B' : '#999',
+                  fontWeight: activeCategory === 'videography' ? 'bold' : 'normal',
+                  background: activeCategory === 'videography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'
+                }}
+              >
                 Videography
               </button>
             </div>
           </div>
 
+          {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
             <span>appointment</span>
             <span>/</span>
             <span className="font-semibold" style={{color: '#755A7B'}}>place a booking</span>
           </div>
 
+          {/* Calendar */}
           <div className="bg-white rounded-xl shadow-md p-4 mb-6 max-w-4xl mx-auto">
+            {/* Calendar Header */}
             <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="px-4 py-2 rounded-lg font-medium text-white" style={{backgroundColor: '#755A7B'}}>
-                ← Previous
+              <button
+                onClick={prevMonth}
+                className="px-4 py-2 rounded-lg font-medium text-white"
+                style={{backgroundColor: '#755A7B'}}
+              >
+                â† Previous
               </button>
               <h3 className="text-xl font-bold text-gray-800">{monthName}</h3>
-              <button onClick={nextMonth} className="px-4 py-2 rounded-lg font-medium text-white" style={{backgroundColor: '#755A7B'}}>
-                Next →
+              <button
+                onClick={nextMonth}
+                className="px-4 py-2 rounded-lg font-medium text-white"
+                style={{backgroundColor: '#755A7B'}}
+              >
+                Next â†’
               </button>
             </div>
 
+            {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-1">
+              {/* Day Headers */}
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                 <div key={day} className="text-center font-semibold text-gray-600 py-1 text-sm">
                   {day}
                 </div>
               ))}
 
+              {/* Empty cells for days before month starts */}
               {Array.from({ length: startingDayOfWeek }).map((_, idx) => (
                 <div key={`empty-${idx}`} className="aspect-square"></div>
               ))}
 
+              {/* Calendar Days */}
               {Array.from({ length: daysInMonth }).map((_, idx) => {
                 const day = idx + 1;
                 const dateStr = formatDate(currentDate, day);
@@ -323,12 +574,24 @@ export default function PlaceBookingPage() {
                 const dayBookings = getBookingsForDate(dateStr);
 
                 return (
-                  <div key={day} onClick={() => handleDateClick(dateStr)} className="aspect-square border-2 rounded-lg p-1 cursor-pointer hover:border-purple-500 transition-all relative" style={{borderColor: hasBooking ? '#755A7B' : '#e5e7eb', backgroundColor: hasBooking ? 'rgba(117, 90, 123, 0.05)' : 'white'}}>
+                  <div
+                    key={day}
+                    onClick={() => handleDateClick(dateStr)}
+                    className="aspect-square border-2 rounded-lg p-1 cursor-pointer hover:border-purple-500 transition-all relative"
+                    style={{
+                      borderColor: hasBooking ? '#755A7B' : '#e5e7eb',
+                      backgroundColor: hasBooking ? 'rgba(117, 90, 123, 0.05)' : 'white'
+                    }}
+                  >
                     <div className="text-center font-medium text-sm">{day}</div>
                     {hasBooking && (
                       <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-0.5">
                         {dayBookings.map((_, idx) => (
-                          <div key={idx} className="w-1.5 h-1.5 rounded-full" style={{backgroundColor: '#755A7B'}}></div>
+                          <div
+                            key={idx}
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{backgroundColor: '#755A7B'}}
+                          ></div>
                         ))}
                       </div>
                     )}
@@ -338,6 +601,7 @@ export default function PlaceBookingPage() {
             </div>
           </div>
 
+          {/* Upcoming Bookings */}
           <div className="bg-white rounded-xl shadow-md p-6">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Upcoming Bookings</h3>
             <div className="space-y-3">
@@ -353,14 +617,21 @@ export default function PlaceBookingPage() {
                         <p className="text-sm text-gray-600">{booking.clientEmail} | {booking.clientPhone}</p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => {
-                          setSelectedDate(booking.date);
-                          handleEditBooking(booking);
-                          setShowBookingModal(true);
-                        }} className="px-3 py-1 rounded text-white" style={{backgroundColor: '#755A7B'}}>
+                        <button
+                          onClick={() => {
+                            setSelectedDate(booking.date);
+                            handleEditBooking(booking);
+                            setShowBookingModal(true);
+                          }}
+                          className="px-3 py-1 rounded text-white"
+                          style={{backgroundColor: '#755A7B'}}
+                        >
                           <FaEdit />
                         </button>
-                        <button onClick={() => handleDeleteBooking(booking.id)} className="px-3 py-1 rounded bg-red-500 text-white">
+                        <button
+                          onClick={() => handleDeleteBooking(booking.id)}
+                          className="px-3 py-1 rounded bg-red-500 text-white"
+                        >
                           <FaTrash />
                         </button>
                       </div>
@@ -368,10 +639,10 @@ export default function PlaceBookingPage() {
                     <p className="text-sm text-gray-600 mb-2">{booking.description}</p>
                     <div className="flex gap-4 text-sm">
                       <span className="font-semibold" style={{color: '#755A7B'}}>
-                        📅 {new Date(booking.date).toLocaleDateString()}
+                        ðŸ“… {new Date(booking.date).toLocaleDateString()}
                       </span>
                       <span className="font-semibold" style={{color: '#755A7B'}}>
-                        🕐 {booking.time}
+                        ðŸ• {booking.time}
                       </span>
                     </div>
                   </div>
@@ -387,33 +658,44 @@ export default function PlaceBookingPage() {
           </div>
         </main>
 
+        {/* Footer */}
         <footer className="bg-white border-t" style={{backgroundColor: '#755A7B', width: '100%'}}>
           <div className="px-4 md:px-8 py-12">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+              {/* About Section */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <img src="/logo.png" alt="Wedora Logo" className="h-10 w-10" />
-                  <h3 className="text-xl font-bold text-white">Wedora</h3>
+                  <h3 className="text-xl font-bold text-white" style={{fontFamily: 'var(--font-season)'}}>Wedora</h3>
                 </div>
-                <p className="text-purple-100 text-sm">Your trusted partner in creating unforgettable wedding experiences.</p>
+                <p className="text-purple-100 text-sm">
+                  Your trusted partner in creating unforgettable wedding experiences.
+                </p>
               </div>
+
+              {/* Quick Links */}
               <div>
                 <h4 className="text-white font-bold mb-4">Quick Links</h4>
                 <ul className="space-y-2">
                   <li><a href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</a></li>
                   <li><a href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</a></li>
                   <li><a href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</a></li>
+                  <li><a href="/signup" className="text-purple-100 hover:text-white text-sm transition-colors">Sign Up</a></li>
                 </ul>
               </div>
+
+              {/* Services */}
               <div>
                 <h4 className="text-white font-bold mb-4">Services</h4>
                 <ul className="space-y-2">
-                  <li><span className="text-purple-100 text-sm">Venue & Accommodation</span></li>
+                  <li><span className="text-purple-100 text-sm">Photography & Videography</span></li>
                   <li><span className="text-purple-100 text-sm">Photography</span></li>
                   <li><span className="text-purple-100 text-sm">Fashion & Beauty</span></li>
                   <li><span className="text-purple-100 text-sm">Entertainment</span></li>
                 </ul>
               </div>
+
+              {/* Contact Info */}
               <div>
                 <h4 className="text-white font-bold mb-4">Contact Us</h4>
                 <ul className="space-y-2">
@@ -423,6 +705,7 @@ export default function PlaceBookingPage() {
                 </ul>
               </div>
             </div>
+
             <div className="border-t border-purple-400 pt-8">
               <div className="text-center text-purple-100">
                 <p>&copy; 2026 Wedora. All rights reserved.</p>
@@ -432,6 +715,7 @@ export default function PlaceBookingPage() {
         </footer>
       </div>
 
+      {/* Booking Modal */}
       {showBookingModal && selectedDate && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -440,10 +724,13 @@ export default function PlaceBookingPage() {
                 <h3 className="text-2xl font-bold text-gray-800">
                   {editingBooking ? 'Edit Booking' : 'New Booking'}
                 </h3>
-                <button onClick={() => {
-                  setShowBookingModal(false);
-                  setEditingBooking(null);
-                }} className="text-gray-500 hover:text-gray-700">
+                <button
+                  onClick={() => {
+                    setShowBookingModal(false);
+                    setEditingBooking(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
                   <FaTimes size={24} />
                 </button>
               </div>
@@ -461,6 +748,7 @@ export default function PlaceBookingPage() {
                 </p>
               </div>
 
+              {/* Show existing bookings for this date */}
               {!editingBooking && getBookingsForDate(selectedDate).length > 0 && (
                 <div className="mb-6 p-4 bg-purple-50 rounded-lg">
                   <h4 className="font-semibold mb-2 text-gray-800">Existing Bookings:</h4>
@@ -468,15 +756,22 @@ export default function PlaceBookingPage() {
                     <div key={booking.id} className="text-sm mb-2 flex justify-between items-center">
                       <span>{booking.time} - {booking.clientName}</span>
                       <div className="flex gap-2">
-                        <button onClick={() => handleEditBooking(booking)} className="px-2 py-1 text-xs rounded text-white" style={{backgroundColor: '#755A7B'}}>
+                        <button
+                          onClick={() => handleEditBooking(booking)}
+                          className="px-2 py-1 text-xs rounded text-white"
+                          style={{backgroundColor: '#755A7B'}}
+                        >
                           Edit
                         </button>
-                        <button onClick={() => {
-                          handleDeleteBooking(booking.id);
-                          if (getBookingsForDate(selectedDate).length === 1) {
-                            setShowBookingModal(false);
-                          }
-                        }} className="px-2 py-1 text-xs rounded bg-red-500 text-white">
+                        <button
+                          onClick={() => {
+                            handleDeleteBooking(booking.id);
+                            if (getBookingsForDate(selectedDate).length === 1) {
+                              setShowBookingModal(false);
+                            }
+                          }}
+                          className="px-2 py-1 text-xs rounded bg-red-500 text-white"
+                        >
                           Delete
                         </button>
                       </div>
@@ -488,38 +783,93 @@ export default function PlaceBookingPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Client Name</label>
-                  <input type="text" value={newBooking.clientName} onChange={(e) => setNewBooking({...newBooking, clientName: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="John Doe" />
+                  <input
+                    type="text"
+                    value={newBooking.clientName}
+                    onChange={(e) => setNewBooking({...newBooking, clientName: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="John Doe"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Client Email</label>
-                  <input type="email" value={newBooking.clientEmail} onChange={(e) => setNewBooking({...newBooking, clientEmail: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="john@example.com" />
+                  <input
+                    type="email"
+                    value={newBooking.clientEmail}
+                    onChange={(e) => setNewBooking({...newBooking, clientEmail: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="john@example.com"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Client Phone</label>
-                  <input type="tel" value={newBooking.clientPhone} onChange={(e) => setNewBooking({...newBooking, clientPhone: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="+94 77 123 4567" />
+                  <input
+                    type="tel"
+                    value={newBooking.clientPhone}
+                    onChange={(e) => setNewBooking({...newBooking, clientPhone: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="+94 77 123 4567"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Meeting Time</label>
-                  <input type="time" value={newBooking.time} onChange={(e) => setNewBooking({...newBooking, time: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                  <div className="grid grid-cols-3 gap-2">
+                    {timeSlots.map((slot) => {
+                      const booked = isTimeSlotBooked(selectedDate, slot, editingBooking?.id ?? undefined);
+                      const selected = newBooking.time === slot;
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={booked}
+                          onClick={() => {
+                            if (!booked) {
+                              setNewBooking({ ...newBooking, time: slot });
+                              setBookingError('');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${selected ? 'bg-red-500 text-white border-red-500' : booked ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-200 hover:border-purple-500 hover:text-purple-700'}`}
+                        >
+                          {slot}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {bookingError && (
+                    <p className="mt-2 text-sm text-red-600">{bookingError}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                  <textarea value={newBooking.description} onChange={(e) => setNewBooking({...newBooking, description: e.target.value})} className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" rows={4} placeholder="Meeting details, special requests, etc." />
+                  <textarea
+                    value={newBooking.description}
+                    onChange={(e) => setNewBooking({...newBooking, description: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    rows={4}
+                    placeholder="Meeting details, special requests, etc."
+                  />
                 </div>
               </div>
 
               <div className="flex gap-3 mt-6">
-                <button onClick={() => {
-                  setShowBookingModal(false);
-                  setEditingBooking(null);
-                }} className="flex-1 px-6 py-3 border-2 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={() => {
+                    setShowBookingModal(false);
+                    setEditingBooking(null);
+                  }}
+                  className="flex-1 px-6 py-3 border-2 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
                   Cancel
                 </button>
-                <button onClick={handleSaveBooking} className="flex-1 px-6 py-3 rounded-lg font-medium text-white flex items-center justify-center gap-2" style={{backgroundColor: '#755A7B'}}>
+                <button
+                  onClick={handleSaveBooking}
+                  className="flex-1 px-6 py-3 rounded-lg font-medium text-white flex items-center justify-center gap-2"
+                  style={{backgroundColor: '#755A7B'}}
+                >
                   <FaSave /> {editingBooking ? 'Update Booking' : 'Save Booking'}
                 </button>
               </div>
@@ -530,3 +880,4 @@ export default function PlaceBookingPage() {
     </div>
   );
 }
+

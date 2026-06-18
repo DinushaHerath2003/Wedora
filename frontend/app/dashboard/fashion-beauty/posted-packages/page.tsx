@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome, FaCheckCircle, FaTag, FaBoxOpen } from 'react-icons/fa';
 
 type BeautyCategory = 'bridal-makeup' | 'hair-styling' | 'traditional-dressing';
 
@@ -11,112 +14,105 @@ interface Package {
   category: BeautyCategory;
   title: string;
   pricePerDay: number;
-  services: string[];
+  features: string[];
   photos: string[];
   createdAt: Date;
-  duration?: string;
+  stock?: number;
   discount?: string;
   discountType?: string;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
   organizationName?: string;
 }
 
+interface OfferingResponse {
+  id: number;
+  name: string;
+  category: string;
+  price: number | string;
+  facilities?: string[];
+  images?: string[];
+  createdAt: string;
+  stock?: number;
+  discount?: string;
+  discountType?: string;
+  isDraft?: boolean;
+}
+
 export default function PostedPackagesPage() {
   const router = useRouter();
-  const [user, setUser] = useState<VendorUser | null>(null);
+  const [user] = useState<VendorUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const userStr = localStorage.getItem('user');
+    return userStr ? (JSON.parse(userStr) as VendorUser) : null;
+  });
   const [activeCategory, setActiveCategory] = useState<BeautyCategory>('bridal-makeup');
+  const [toast, setToast] = useState<ToastProps | null>(null);
 
-  // Mock packages data
-  const mockPackages: Package[] = [
-    {
-      id: '1',
-      category: 'bridal-makeup',
-      title: 'Complete Bridal Package',
-      pricePerDay: 45000,
-      services: ['Bridal Makeup', 'Hair Styling', 'Saree Draping', 'Touch-up Service'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      duration: '4-5 hours',
-      discount: '15%',
-      discountType: 'Early Bird'
-    },
-    {
-      id: '2',
-      category: 'bridal-makeup',
-      title: 'Luxury Bridal Experience',
-      pricePerDay: 75000,
-      services: ['Airbrush Makeup', 'Professional Hair Styling', 'False Lashes', 'Pre-Wedding Trial'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      duration: '5-6 hours',
-      discount: '20%',
-      discountType: 'Weekend Special'
-    },
-    {
-      id: '3',
-      category: 'hair-styling',
-      title: 'Classic Hair Styling',
-      pricePerDay: 15000,
-      services: ['Hair Styling', 'Hair Treatment', 'Hair Extensions'],
-      photos: ['/pack3.png'],
-      createdAt: new Date(),
-      duration: '2-3 hours'
-    },
-    {
-      id: '4',
-      category: 'hair-styling',
-      title: 'Bridal Hair Package',
-      pricePerDay: 28000,
-      services: ['Bridal Hair Styling', 'Hair Extensions', 'Hair Accessories', 'Touch-up'],
-      photos: ['/pack4.png'],
-      createdAt: new Date(),
-      duration: '3-4 hours',
-      discount: '10%',
-      discountType: 'Season Discount'
-    },
-    {
-      id: '5',
-      category: 'traditional-dressing',
-      title: 'Traditional Saree Draping',
-      pricePerDay: 8000,
-      services: ['Saree Draping', 'Pleating', 'Pin Arrangement'],
-      photos: ['/pack5.png'],
-      createdAt: new Date(),
-      duration: '30-45 minutes'
-    },
-    {
-      id: '6',
-      category: 'traditional-dressing',
-      title: 'Complete Traditional Look',
-      pricePerDay: 22000,
-      services: ['Saree Draping', 'Traditional Makeup', 'Hair Styling', 'Jewelry Arrangement'],
-      photos: ['/pack6.png'],
-      createdAt: new Date(),
-      duration: '3-4 hours',
-      discount: '12%',
-      discountType: 'Bulk Booking'
-    }
-  ];
+  const [packages, setPackages] = useState<Package[]>([]);
 
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const organizationLabel = user?.organizationName || user?.name || 'Fashion & Beauty Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
       case 'bridal-makeup':
-        return '/ven1.png';
+        return '/saloon.png';
       case 'hair-styling':
-        return '/ven2.png';
+        return '/ii.jpg';
       case 'traditional-dressing':
-        return '/ven3.png';
+        return '/rose.jpg';
       default:
-        return '/ven1.png';
+        return '/saloon.png';
     }
   };
+
+  async function fetchVendorPackages(vendorId: number) {
+    try {
+      const offerings = await apiFetch<OfferingResponse[]>(`/offerings?vendorId=${vendorId}`);
+      console.log('Fetched offerings:', offerings);
+      setPackages(
+        offerings
+          .filter((offering) => !offering.isDraft)
+          .map((offering) => {
+            const category = offering.category;
+            let mappedCategory: BeautyCategory = 'bridal-makeup';
+            
+            if (category === 'hair-styling') {
+              mappedCategory = 'hair-styling';
+            } else if (category === 'traditional-dressing') {
+              mappedCategory = 'traditional-dressing';
+            } else if (category === 'bridal-makeup') {
+              mappedCategory = 'bridal-makeup';
+            }
+            
+            return {
+              id: offering.id.toString(),
+              category: mappedCategory,
+              title: offering.name,
+              pricePerDay: Number(offering.price),
+              features: offering.facilities || [],
+              photos: offering.images || [],
+              createdAt: new Date(offering.createdAt),
+              stock: offering.stock,
+              discount: offering.discount,
+              discountType: offering.discountType,
+            };
+          })
+      );
+    } catch (error) {
+      console.error('Unable to load posted packages', error);
+      setToast({
+        message: `Failed to load packages: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    }
+  }
 
   const getCategoryBannerText = () => {
     switch(activeCategory) {
@@ -135,17 +131,24 @@ export default function PostedPackagesPage() {
     const userStr = localStorage.getItem('user');
     
     if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
+      const userData = JSON.parse(userStr) as VendorUser;
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (Number.isFinite(vendorId) && vendorId > 0) {
+        console.log('Fetching packages for vendor:', vendorId);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchVendorPackages(vendorId);
+      } else {
+        router.push('/login');
+      }
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Fashion & Beauty Studio'
-      });
+      router.push('/login');
     }
-  }, []);
+  }, [router]);
+
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -153,9 +156,26 @@ export default function PostedPackagesPage() {
     router.push('/');
   };
 
-  const handleDeletePackage = (id: string) => {
-    if (confirm('Are you sure you want to delete this package?')) {
+  const handleDeletePackage = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this package?')) {
+      return;
+    }
+
+    try {
+      await apiFetch(`/offerings/${id}`, {
+        method: 'DELETE',
+      });
       setPackages(packages.filter(pkg => pkg.id !== id));
+      setToast({
+        message: 'Package deleted successfully.',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Unable to delete package', error);
+      setToast({
+        message: `Failed to delete package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
     }
   };
 
@@ -163,16 +183,25 @@ export default function PostedPackagesPage() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              FB
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Fashion & Beauty</h2>
-              <p className="text-xs text-gray-500">Professional Beauty Services</p>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
+              <p className="text-xs text-gray-500">fashion & beauty</p>
             </div>
           </div>
         </div>
@@ -181,6 +210,7 @@ export default function PostedPackagesPage() {
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
             <button 
+              onClick={() => router.push('/dashboard/fashion-beauty/overview')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaChartBar /> Overview
@@ -198,6 +228,7 @@ export default function PostedPackagesPage() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/fashion-beauty/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -212,7 +243,7 @@ export default function PostedPackagesPage() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/fashion-beauty/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -222,10 +253,10 @@ export default function PostedPackagesPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/fashion-beauty/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/fashion-beauty/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -242,6 +273,24 @@ export default function PostedPackagesPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button
+                onClick={() => router.push('/')}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+              >
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Posted Packages</h1>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredPackages.length}</span> posted package{filteredPackages.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
           {/* Banner Section */}
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
@@ -313,77 +362,125 @@ export default function PostedPackagesPage() {
           {/* Packages Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {filteredPackages.map((pkg) => (
-              <div key={pkg.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow">
-                {/* Package Image */}
-                <div className="relative h-48 bg-gray-200">
+              <div 
+                key={pkg.id} 
+                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group"
+              >
+                {/* Package Image Container */}
+                <div className="relative h-48 bg-linear-to-br from-gray-200 to-gray-300 overflow-hidden group">
                   <img 
-                    src={pkg.photos[0]} 
+                    src={pkg.photos[0] || '/pack1.png'} 
                     alt={pkg.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
+                  {/* Overlay on Hover */}
+                  <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                  
+                  {/* Discount Badge */}
                   {pkg.discount && (
-                    <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                    <div className="absolute top-4 right-4 bg-linear-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg transform group-hover:scale-110 transition-transform">
                       {pkg.discount} OFF
+                    </div>
+                  )}
+                  
+                  {/* Stock Badge */}
+                  {pkg.stock !== undefined && (
+                    <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow-md ${
+                      pkg.stock > 0 
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-red-500 text-white'
+                    }`}>
+                      {pkg.stock > 0 ? `${pkg.stock} Available` : 'Out of Stock'}
                     </div>
                   )}
                 </div>
 
                 {/* Package Details */}
                 <div className="p-5">
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">{pkg.title}</h3>
+                  {/* Title */}
+                  <h3 className="text-lg font-bold text-gray-800 mb-3 line-clamp-2 group-hover:text-purple-600 transition-colors">
+                    {pkg.title}
+                  </h3>
                   
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl font-bold" style={{color: '#755A7B'}}>
+                  {/* Price Section */}
+                  <div className="flex items-baseline gap-2 mb-4 pb-4 border-b border-gray-100">
+                    <span className="text-3xl font-bold" style={{color: '#755A7B'}}>
                       Rs. {pkg.pricePerDay.toLocaleString()}
                     </span>
+                    <span className="text-sm text-gray-500 font-medium">/package</span>
                   </div>
 
+                  {/* Discount Type Badge */}
                   {pkg.discountType && (
-                    <div className="mb-3">
-                      <span className="inline-block bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold">
-                        {pkg.discountType}
+                    <div className="mb-4">
+                      <span className="inline-flex items-center gap-2 bg-linear-to-r from-purple-100 to-purple-50 text-purple-700 px-4 py-1 rounded-full text-xs font-semibold border border-purple-200">
+                        <FaTag /> {pkg.discountType}
                       </span>
                     </div>
                   )}
 
-                  {/* Services */}
+                  {/* Features */}
                   <div className="mb-4">
-                    <p className="text-xs text-gray-500 mb-2">Services:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {pkg.services.slice(0, 3).map((service, idx) => (
-                        <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
-                          {service}
+                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-2">
+                      <FaCheckCircle style={{ color: '#755A7B' }} /> Features:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {pkg.features.slice(0, 3).map((facility, idx) => (
+                        <span key={idx} className="text-xs bg-linear-to-r from-purple-50 to-purple-100 text-purple-700 px-3 py-1 rounded-full border border-purple-200 font-medium">
+                          {facility}
                         </span>
                       ))}
-                      {pkg.services.length > 3 && (
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                          +{pkg.services.length - 3} more
+                      {pkg.features.length > 3 && (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-medium">
+                          +{pkg.features.length - 3} more
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Duration Info */}
-                  {pkg.duration && (
-                    <p className="text-sm text-gray-600 mb-4">
-                      Duration: <span className="font-semibold">{pkg.duration}</span>
-                    </p>
-                  )}
+                  {/* Created Date */}
+                  <p className="text-xs text-gray-500 mb-4 flex items-center gap-2">
+                    <FaCalendarAlt style={{ color: '#755A7B' }} /> Posted: {new Date(pkg.createdAt).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
+                  </p>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2">
                     <button 
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all"
-                      style={{backgroundColor: '#755A7B'}}
+                      onClick={() => router.push(`/services/fashion-beauty/${user?.id || ''}`)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500 font-semibold text-emerald-700 bg-white transition-all hover:bg-emerald-600 hover:text-white hover:shadow-lg"
                     >
-                      <FaEdit /> Edit
+                      <FaEye size={16} /> See More
                     </button>
-                    <button 
-                      onClick={() => handleDeletePackage(pkg.id)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all"
-                    >
-                      <FaTrash /> Delete
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => router.push(`/dashboard/fashion-beauty?edit=${pkg.id}`)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 font-medium transition-all hover:shadow-lg"
+                        style={{
+                          borderColor: '#755A7B',
+                          color: '#755A7B',
+                          backgroundColor: 'white',
+                          borderWidth: '2px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(117, 90, 123, 0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'white';
+                        }}
+                      >
+                        <FaEdit size={16} /> Edit
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePackage(pkg.id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all"
+                      >
+                        <FaTrash size={16} /> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -393,9 +490,9 @@ export default function PostedPackagesPage() {
           {/* Empty State */}
           {filteredPackages.length === 0 && (
             <div className="text-center py-16">
-              <div className="text-6xl text-gray-300 mb-4">📦</div>
+              <FaBoxOpen className="mx-auto text-6xl text-gray-300 mb-4" />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">No packages found</h3>
-              <p className="text-gray-500 mb-6">You haven't posted any packages in this category yet.</p>
+              <p className="text-gray-500 mb-6">You have not posted any packages in this category yet.</p>
               <button 
                 onClick={() => router.push('/dashboard/fashion-beauty')}
                 className="px-6 py-3 rounded-lg font-medium text-white"
@@ -426,10 +523,10 @@ export default function PostedPackagesPage() {
               <div>
                 <h4 className="text-white font-bold mb-4">Quick Links</h4>
                 <ul className="space-y-2">
-                  <li><a href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</a></li>
-                  <li><a href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</a></li>
-                  <li><a href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</a></li>
-                  <li><a href="/signup" className="text-purple-100 hover:text-white text-sm transition-colors">Sign Up</a></li>
+                  <li><Link href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</Link></li>
+                  <li><Link href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</Link></li>
+                  <li><Link href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</Link></li>
+                  <li><Link href="/signup" className="text-purple-100 hover:text-white text-sm transition-colors">Sign Up</Link></li>
                 </ul>
               </div>
 
@@ -437,7 +534,7 @@ export default function PostedPackagesPage() {
               <div>
                 <h4 className="text-white font-bold mb-4">Services</h4>
                 <ul className="space-y-2">
-                  <li><span className="text-purple-100 text-sm">Venue & Accommodation</span></li>
+                  <li><span className="text-purple-100 text-sm">Fashion & Beauty</span></li>
                   <li><span className="text-purple-100 text-sm">Photography</span></li>
                   <li><span className="text-purple-100 text-sm">Fashion & Beauty</span></li>
                   <li><span className="text-purple-100 text-sm">Entertainment</span></li>
@@ -466,3 +563,6 @@ export default function PostedPackagesPage() {
     </div>
   );
 }
+
+
+

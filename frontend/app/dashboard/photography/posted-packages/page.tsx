@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome, FaCheckCircle, FaTag, FaBoxOpen } from 'react-icons/fa';
 
 type PhotoCategory = 'wedding-photography' | 'pre-wedding-shoots' | 'videography';
 
@@ -20,100 +23,96 @@ interface Package {
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
   organizationName?: string;
 }
 
+interface OfferingResponse {
+  id: number;
+  name: string;
+  category: string;
+  price: number | string;
+  facilities?: string[];
+  images?: string[];
+  createdAt: string;
+  stock?: number;
+  discount?: string;
+  discountType?: string;
+  isDraft?: boolean;
+}
+
 export default function PostedPackagesPage() {
   const router = useRouter();
-  const [user, setUser] = useState<VendorUser | null>(null);
+  const [user] = useState<VendorUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const userStr = localStorage.getItem('user');
+    return userStr ? (JSON.parse(userStr) as VendorUser) : null;
+  });
   const [activeCategory, setActiveCategory] = useState<PhotoCategory>('wedding-photography');
+  const [toast, setToast] = useState<ToastProps | null>(null);
 
-  const mockPackages: Package[] = [
-    {
-      id: '1',
-      category: 'wedding-photography',
-      title: 'Premium Wedding Photography',
-      pricePerDay: 75000,
-      features: ['HD Photos', 'Album', 'Online Gallery', 'Drone Shots'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      stock: 3,
-      discount: '10%',
-      discountType: 'Early Bird'
-    },
-    {
-      id: '2',
-      category: 'wedding-photography',
-      title: 'Classic Wedding Package',
-      pricePerDay: 50000,
-      features: ['HD Photos', 'Album', 'Online Gallery'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      stock: 5
-    },
-    {
-      id: '3',
-      category: 'pre-wedding-shoots',
-      title: 'Outdoor Pre-Wedding Shoot',
-      pricePerDay: 35000,
-      features: ['HD Photos', 'Online Gallery', 'Drone Shots'],
-      photos: ['/pack3.png'],
-      createdAt: new Date(),
-      stock: 10,
-      discount: '15%',
-      discountType: 'Weekend Special'
-    },
-    {
-      id: '4',
-      category: 'pre-wedding-shoots',
-      title: 'Studio Pre-Wedding Package',
-      pricePerDay: 25000,
-      features: ['HD Photos', 'Online Gallery'],
-      photos: ['/pack4.png'],
-      createdAt: new Date(),
-      stock: 8
-    },
-    {
-      id: '5',
-      category: 'videography',
-      title: 'Cinematic Wedding Film',
-      pricePerDay: 95000,
-      features: ['4K Video', 'Drone Shots', 'Same Day Edit', 'Raw Footage'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      stock: 2,
-      discount: '20%',
-      discountType: 'Season Discount'
-    },
-    {
-      id: '6',
-      category: 'videography',
-      title: 'Highlight Reel Package',
-      pricePerDay: 60000,
-      features: ['HD Video', 'Highlight Reel', 'Online Sharing'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      stock: 4
-    }
-  ];
+  const [packages, setPackages] = useState<Package[]>([]);
 
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const organizationLabel = user?.organizationName || user?.name || 'Photography Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
       case 'wedding-photography':
-        return '/ven1.png';
+        return '/photography.png';
       case 'pre-wedding-shoots':
-        return '/ven2.png';
+        return '/photography2.png';
       case 'videography':
-        return '/ven3.png';
+        return '/photography3.png';
       default:
-        return '/ven1.png';
+        return '/photography.png';
     }
   };
+
+  async function fetchVendorPackages(vendorId: number) {
+    try {
+      const offerings = await apiFetch<OfferingResponse[]>(`/offerings?vendorId=${vendorId}`);
+      console.log('Fetched offerings:', offerings);
+      setPackages(
+        offerings
+          .filter((offering) => !offering.isDraft)
+          .map((offering) => {
+            const category = offering.category;
+            let mappedCategory: PhotoCategory = 'wedding-photography';
+            
+            if (category === 'pre-wedding-shoots') {
+              mappedCategory = 'pre-wedding-shoots';
+            } else if (category === 'videography') {
+              mappedCategory = 'videography';
+            } else if (category === 'wedding-photography') {
+              mappedCategory = 'wedding-photography';
+            }
+            
+            return {
+              id: offering.id.toString(),
+              category: mappedCategory,
+              title: offering.name,
+              pricePerDay: Number(offering.price),
+              features: offering.facilities || [],
+              photos: offering.images || [],
+              createdAt: new Date(offering.createdAt),
+              stock: offering.stock,
+              discount: offering.discount,
+              discountType: offering.discountType,
+            };
+          })
+      );
+    } catch (error) {
+      console.error('Unable to load posted packages', error);
+      setToast({
+        message: `Failed to load packages: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    }
+  }
 
   const getCategoryBannerText = () => {
     switch(activeCategory) {
@@ -132,17 +131,24 @@ export default function PostedPackagesPage() {
     const userStr = localStorage.getItem('user');
     
     if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
+      const userData = JSON.parse(userStr) as VendorUser;
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (Number.isFinite(vendorId) && vendorId > 0) {
+        console.log('Fetching packages for vendor:', vendorId);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchVendorPackages(vendorId);
+      } else {
+        router.push('/login');
+      }
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Perfect Moments Studio'
-      });
+      router.push('/login');
     }
-  }, []);
+  }, [router]);
+
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -150,9 +156,26 @@ export default function PostedPackagesPage() {
     router.push('/');
   };
 
-  const handleDeletePackage = (id: string) => {
-    if (confirm('Are you sure you want to delete this package?')) {
+  const handleDeletePackage = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this package?')) {
+      return;
+    }
+
+    try {
+      await apiFetch(`/offerings/${id}`, {
+        method: 'DELETE',
+      });
       setPackages(packages.filter(pkg => pkg.id !== id));
+      setToast({
+        message: 'Package deleted successfully.',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Unable to delete package', error);
+      setToast({
+        message: `Failed to delete package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
     }
   };
 
@@ -160,14 +183,24 @@ export default function PostedPackagesPage() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
+      {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              P
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Perfect Moments</h2>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
               <p className="text-xs text-gray-500">photography & videography</p>
             </div>
           </div>
@@ -176,26 +209,41 @@ export default function PostedPackagesPage() {
         <nav className="flex-1 p-4">
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography/overview')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaChartBar /> Overview
             </button>
-            <button onClick={() => router.push('/dashboard/photography')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaPlus /> Post Package
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors" style={{backgroundColor: '#755A7B', color: 'white'}}>
+            <button 
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors"
+              style={{backgroundColor: '#755A7B', color: 'white'}}
+            >
               <FaFileInvoice /> Posted Packages
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography/draft-packages')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
+            >
               <FaEdit /> Draft Package
             </button>
           </div>
 
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Appointment</p>
-            <button onClick={() => router.push('/dashboard/photography/place-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button 
+              onClick={() => router.push('/dashboard/photography/place-booking')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100"
+            >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/photography/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -205,150 +253,295 @@ export default function PostedPackagesPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/photography/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/photography/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all" style={{backgroundColor: '#755A7B'}}>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-white transition-all"
+              style={{backgroundColor: '#755A7B'}}
+            >
               <FaMoon /> Logout
             </button>
           </div>
         </nav>
       </aside>
 
+      {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" style={{backgroundImage: `url(${getCategoryBannerImage()})`, backgroundSize: 'cover', backgroundPosition: 'center', height: '200px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', border: '2px solid rgba(117, 90, 123, 0.2)'}}>
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button
+                onClick={() => router.push('/')}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
+              >
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Posted Packages</h1>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredPackages.length}</span> posted package{filteredPackages.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+
+          {/* Banner Section */}
+          <div 
+            className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
+            style={{
+              backgroundImage: `url(${getCategoryBannerImage()})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              height: '200px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+              border: '2px solid rgba(117, 90, 123, 0.2)'
+            }}
+          >
             <h2 className="text-2xl md:text-4xl font-bold text-white mb-2" style={{textShadow: '3px 3px 6px rgba(0,0,0,0.7)'}}>{getCategoryBannerText()}</h2>
             <p className="text-sm md:text-xl text-white" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.7)'}}>View and manage your posted packages</p>
           </div>
 
+          {/* Category Tabs */}
           <div className="mb-6">
             <div className="flex gap-2 md:gap-6 justify-center items-center overflow-x-auto pb-2">
-              <button onClick={() => setActiveCategory('wedding-photography')} className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap" style={{borderColor: activeCategory === 'wedding-photography' ? '#755A7B' : 'transparent', color: activeCategory === 'wedding-photography' ? '#755A7B' : '#999', fontWeight: activeCategory === 'wedding-photography' ? 'bold' : 'normal', background: activeCategory === 'wedding-photography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'}}>
+              <button
+                onClick={() => setActiveCategory('wedding-photography')}
+                className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap"
+                style={{
+                  borderColor: activeCategory === 'wedding-photography' ? '#755A7B' : 'transparent',
+                  color: activeCategory === 'wedding-photography' ? '#755A7B' : '#999',
+                  fontWeight: activeCategory === 'wedding-photography' ? 'bold' : 'normal',
+                  background: activeCategory === 'wedding-photography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'
+                }}
+              >
                 Wedding Photography
               </button>
-              <button onClick={() => setActiveCategory('pre-wedding-shoots')} className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap" style={{borderColor: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : 'transparent', color: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : '#999', fontWeight: activeCategory === 'pre-wedding-shoots' ? 'bold' : 'normal', background: activeCategory === 'pre-wedding-shoots' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'}}>
+              <button
+                onClick={() => setActiveCategory('pre-wedding-shoots')}
+                className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap"
+                style={{
+                  borderColor: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : 'transparent',
+                  color: activeCategory === 'pre-wedding-shoots' ? '#755A7B' : '#999',
+                  fontWeight: activeCategory === 'pre-wedding-shoots' ? 'bold' : 'normal',
+                  background: activeCategory === 'pre-wedding-shoots' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'
+                }}
+              >
                 Pre-Wedding Shoots
               </button>
-              <button onClick={() => setActiveCategory('videography')} className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap" style={{borderColor: activeCategory === 'videography' ? '#755A7B' : 'transparent', color: activeCategory === 'videography' ? '#755A7B' : '#999', fontWeight: activeCategory === 'videography' ? 'bold' : 'normal', background: activeCategory === 'videography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'}}>
+              <button
+                onClick={() => setActiveCategory('videography')}
+                className="px-4 md:px-8 py-3 font-medium transition-all border-b-4 whitespace-nowrap"
+                style={{
+                  borderColor: activeCategory === 'videography' ? '#755A7B' : 'transparent',
+                  color: activeCategory === 'videography' ? '#755A7B' : '#999',
+                  fontWeight: activeCategory === 'videography' ? 'bold' : 'normal',
+                  background: activeCategory === 'videography' ? 'linear-gradient(to bottom, transparent, rgba(117, 90, 123, 0.05))' : 'transparent'
+                }}
+              >
                 Videography
               </button>
             </div>
           </div>
 
+          {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
             <span>mainmenu</span>
             <span>/</span>
             <span className="font-semibold" style={{color: '#755A7B'}}>posted packages</span>
           </div>
 
+          {/* Packages Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {filteredPackages.map((pkg) => (
-              <div key={pkg.id} className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative h-48 bg-gray-200">
-                  <img src={pkg.photos[0]} alt={pkg.title} className="w-full h-full object-cover" />
+              <div 
+                key={pkg.id} 
+                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 group"
+              >
+                {/* Package Image Container */}
+                <div className="relative h-48 bg-linear-to-br from-gray-200 to-gray-300 overflow-hidden group">
+                  <img 
+                    src={pkg.photos[0] || '/pack1.png'} 
+                    alt={pkg.title}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  />
+                  {/* Overlay on Hover */}
+                  <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                  
+                  {/* Discount Badge */}
                   {pkg.discount && (
-                    <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                    <div className="absolute top-4 right-4 bg-linear-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg transform group-hover:scale-110 transition-transform">
                       {pkg.discount} OFF
+                    </div>
+                  )}
+                  
+                  {/* Stock Badge */}
+                  {pkg.stock !== undefined && (
+                    <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow-md ${
+                      pkg.stock > 0 
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-red-500 text-white'
+                    }`}>
+                      {pkg.stock > 0 ? `${pkg.stock} Available` : 'Out of Stock'}
                     </div>
                   )}
                 </div>
 
+                {/* Package Details */}
                 <div className="p-5">
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">{pkg.title}</h3>
+                  {/* Title */}
+                  <h3 className="text-lg font-bold text-gray-800 mb-3 line-clamp-2 group-hover:text-purple-600 transition-colors">
+                    {pkg.title}
+                  </h3>
                   
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl font-bold" style={{color: '#755A7B'}}>
+                  {/* Price Section */}
+                  <div className="flex items-baseline gap-2 mb-4 pb-4 border-b border-gray-100">
+                    <span className="text-3xl font-bold" style={{color: '#755A7B'}}>
                       Rs. {pkg.pricePerDay.toLocaleString()}
                     </span>
-                    <span className="text-sm text-gray-500">/package</span>
+                    <span className="text-sm text-gray-500 font-medium">/package</span>
                   </div>
 
+                  {/* Discount Type Badge */}
                   {pkg.discountType && (
-                    <div className="mb-3">
-                      <span className="inline-block bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-semibold">
-                        {pkg.discountType}
+                    <div className="mb-4">
+                      <span className="inline-flex items-center gap-2 bg-linear-to-r from-purple-100 to-purple-50 text-purple-700 px-4 py-1 rounded-full text-xs font-semibold border border-purple-200">
+                        <FaTag /> {pkg.discountType}
                       </span>
                     </div>
                   )}
 
+                  {/* Features */}
                   <div className="mb-4">
-                    <p className="text-xs text-gray-500 mb-2">Features:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {pkg.features.slice(0, 3).map((feature, idx) => (
-                        <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
-                          {feature}
+                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-2">
+                      <FaCheckCircle style={{ color: '#755A7B' }} /> Features:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {pkg.features.slice(0, 3).map((facility, idx) => (
+                        <span key={idx} className="text-xs bg-linear-to-r from-purple-50 to-purple-100 text-purple-700 px-3 py-1 rounded-full border border-purple-200 font-medium">
+                          {facility}
                         </span>
                       ))}
                       {pkg.features.length > 3 && (
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        <span className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-medium">
                           +{pkg.features.length - 3} more
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {pkg.stock !== undefined && (
-                    <p className="text-sm text-gray-600 mb-4">
-                      Stock: <span className="font-semibold">{pkg.stock} available</span>
-                    </p>
-                  )}
+                  {/* Created Date */}
+                  <p className="text-xs text-gray-500 mb-4 flex items-center gap-2">
+                    <FaCalendarAlt style={{ color: '#755A7B' }} /> Posted: {new Date(pkg.createdAt).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
+                  </p>
 
-                  <div className="flex gap-2">
-                    <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all" style={{backgroundColor: '#755A7B'}}>
-                      <FaEdit /> Edit
+                  {/* Action Buttons */}
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => router.push(`/services/photography-videography/${user?.id || ''}`)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-500 font-semibold text-emerald-700 bg-white transition-all hover:bg-emerald-600 hover:text-white hover:shadow-lg"
+                    >
+                      <FaEye size={16} /> See More
                     </button>
-                    <button onClick={() => handleDeletePackage(pkg.id)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all">
-                      <FaTrash /> Delete
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => router.push(`/dashboard/photography?edit=${pkg.id}`)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 font-medium transition-all hover:shadow-lg"
+                        style={{
+                          borderColor: '#755A7B',
+                          color: '#755A7B',
+                          backgroundColor: 'white',
+                          borderWidth: '2px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(117, 90, 123, 0.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'white';
+                        }}
+                      >
+                        <FaEdit size={16} /> Edit
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePackage(pkg.id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border-2 rounded-lg font-medium text-red-600 border-red-600 hover:bg-red-50 transition-all"
+                      >
+                        <FaTrash size={16} /> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
+          {/* Empty State */}
           {filteredPackages.length === 0 && (
             <div className="text-center py-16">
-              <div className="text-6xl text-gray-300 mb-4">📦</div>
+              <FaBoxOpen className="mx-auto text-6xl text-gray-300 mb-4" />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">No packages found</h3>
-              <p className="text-gray-500 mb-6">You haven't posted any packages in this category yet.</p>
-              <button onClick={() => router.push('/dashboard/photography')} className="px-6 py-3 rounded-lg font-medium text-white" style={{backgroundColor: '#755A7B'}}>
+              <p className="text-gray-500 mb-6">You have not posted any packages in this category yet.</p>
+              <button 
+                onClick={() => router.push('/dashboard/photography')}
+                className="px-6 py-3 rounded-lg font-medium text-white"
+                style={{backgroundColor: '#755A7B'}}
+              >
                 <FaPlus className="inline mr-2" /> Create Your First Package
               </button>
             </div>
           )}
         </main>
 
+        {/* Footer */}
         <footer className="bg-white border-t" style={{backgroundColor: '#755A7B', width: '100%'}}>
           <div className="px-4 md:px-8 py-12">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+              {/* About Section */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <img src="/logo.png" alt="Wedora Logo" className="h-10 w-10" />
-                  <h3 className="text-xl font-bold text-white">Wedora</h3>
+                  <h3 className="text-xl font-bold text-white" style={{fontFamily: 'var(--font-season)'}}>Wedora</h3>
                 </div>
-                <p className="text-purple-100 text-sm">Your trusted partner in creating unforgettable wedding experiences.</p>
+                <p className="text-purple-100 text-sm">
+                  Your trusted partner in creating unforgettable wedding experiences.
+                </p>
               </div>
+
+              {/* Quick Links */}
               <div>
                 <h4 className="text-white font-bold mb-4">Quick Links</h4>
                 <ul className="space-y-2">
-                  <li><a href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</a></li>
-                  <li><a href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</a></li>
-                  <li><a href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</a></li>
+                  <li><Link href="/" className="text-purple-100 hover:text-white text-sm transition-colors">Home</Link></li>
+                  <li><Link href="/about" className="text-purple-100 hover:text-white text-sm transition-colors">About Us</Link></li>
+                  <li><Link href="/contact" className="text-purple-100 hover:text-white text-sm transition-colors">Contact</Link></li>
+                  <li><Link href="/signup" className="text-purple-100 hover:text-white text-sm transition-colors">Sign Up</Link></li>
                 </ul>
               </div>
+
+              {/* Services */}
               <div>
                 <h4 className="text-white font-bold mb-4">Services</h4>
                 <ul className="space-y-2">
-                  <li><span className="text-purple-100 text-sm">Venue & Accommodation</span></li>
+                  <li><span className="text-purple-100 text-sm">Photography & Videography</span></li>
                   <li><span className="text-purple-100 text-sm">Photography</span></li>
                   <li><span className="text-purple-100 text-sm">Fashion & Beauty</span></li>
                   <li><span className="text-purple-100 text-sm">Entertainment</span></li>
                 </ul>
               </div>
+
+              {/* Contact Info */}
               <div>
                 <h4 className="text-white font-bold mb-4">Contact Us</h4>
                 <ul className="space-y-2">
@@ -358,6 +551,7 @@ export default function PostedPackagesPage() {
                 </ul>
               </div>
             </div>
+
             <div className="border-t border-purple-400 pt-8">
               <div className="text-center text-purple-100">
                 <p>&copy; 2026 Wedora. All rights reserved.</p>
@@ -369,3 +563,5 @@ export default function PostedPackagesPage() {
     </div>
   );
 }
+
+

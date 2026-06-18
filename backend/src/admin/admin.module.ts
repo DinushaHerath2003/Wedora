@@ -18,3 +18,17 @@ import { AuthModule } from '../auth/auth.module';
   providers: [AdminService],
 })
 export class AdminModule {}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*he AdminModule is a NestJS feature module that groups admin functionality. It integrates TypeORM entities like User, Vendor, and Booking, imports Auth and Contacts modules for authentication and messaging, and provides AdminController and AdminService to handle admin operations in a modular and scalable architecture.*/

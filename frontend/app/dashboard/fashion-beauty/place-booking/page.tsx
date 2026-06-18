@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave } from 'react-icons/fa';
+import { apiFetch } from '@/lib/api';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave, FaHome } from 'react-icons/fa';
 
 type BeautyCategory = 'bridal-makeup' | 'hair-styling' | 'traditional-dressing';
 
@@ -18,6 +19,7 @@ interface Booking {
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -27,9 +29,13 @@ interface VendorUser {
 export default function PlaceBookingPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
+  
+  const organizationLabel = user?.organizationName || user?.name || 'Fashion & Beauty Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
   const [activeCategory, setActiveCategory] = useState<BeautyCategory>('bridal-makeup');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [offerings, setOfferings] = useState<{ id: number; category: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -40,17 +46,31 @@ export default function PlaceBookingPage() {
     description: '',
     time: '10:00'
   });
+  const [bookingError, setBookingError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  const timeSlots = [
+    '09:00',
+    '10:00',
+    '11:00',
+    '12:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+    '17:00',
+  ];
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
       case 'bridal-makeup':
-        return '/ven1.png';
+        return '/saloon.png';
       case 'hair-styling':
-        return '/ven2.png';
+        return '/ii.jpg';
       case 'traditional-dressing':
-        return '/ven3.png';
+        return '/rose.jpg';
       default:
-        return '/ven1.png';
+        return '/saloon.png';
     }
   };
 
@@ -67,27 +87,95 @@ export default function PlaceBookingPage() {
     }
   };
 
+  const normalizeBeautyCategory = (category: string | undefined): BeautyCategory => {
+    if (category === 'hair-styling') {
+      return 'hair-styling';
+    }
+    if (category === 'traditional-dressing') {
+      return 'traditional-dressing';
+    }
+    if (category === 'bridal-makeup') {
+      return 'bridal-makeup';
+    }
+    return 'bridal-makeup';
+  };
+
+  const getPackageCategory = (category: BeautyCategory) => {
+    switch (category) {
+      case 'bridal-makeup':
+        return 'bridal-makeup';
+      case 'hair-styling':
+        return 'hair-styling';
+      case 'traditional-dressing':
+        return 'traditional-dressing';
+      default:
+        return 'bridal-makeup';
+    }
+  };
+
+  const isTimeSlotBooked = (dateStr: string, timeSlot: string, ignoreBookingId?: string) => {
+    return bookings.some(booking =>
+      booking.date === dateStr &&
+      booking.category === activeCategory &&
+      booking.time === timeSlot &&
+      booking.id !== ignoreBookingId
+    );
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
     if (userStr) {
       const userData = JSON.parse(userStr);
       setUser(userData);
+      const vendorId = Number(userData.id);
+      if (userData.role !== 'vendor') {
+        router.push('/');
+        return;
+      }
+      if (!Number.isNaN(vendorId) && vendorId > 0) {
+        fetchVendorBookings(vendorId);
+        fetchVendorOfferings(vendorId);
+      } else {
+        router.push('/login');
+      }
     } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Fashion & Beauty Studio'
-      });
+      router.push('/login');
     }
+  }, [router]);
 
-    // Load bookings from localStorage
-    const savedBookings = localStorage.getItem('fashionBeautyBookings');
-    if (savedBookings) {
-      setBookings(JSON.parse(savedBookings));
+  const fetchVendorBookings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/bookings?vendorId=${vendorId}`);
+      const mapped = data.map((booking) => ({
+        id: booking.id.toString(),
+        date: booking.eventDate ? booking.eventDate.slice(0, 10) : '',
+        time: booking.eventTime || '09:00',
+        clientName: booking.clientName || booking.user?.name || 'Guest',
+        clientEmail: booking.clientEmail || booking.user?.email || '',
+        clientPhone: booking.clientPhone || '',
+        description: booking.notes || '',
+        category: normalizeBeautyCategory(booking.offering?.category) as BeautyCategory,
+      }));
+      setBookings(mapped);
+    } catch (error) {
+      console.error('Failed to load vendor bookings', error);
+      setApiError('Unable to load bookings from backend. Showing local bookings only.');
     }
-  }, []);
+  };
+
+  const fetchVendorOfferings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setOfferings(
+        data.map((offering) => ({
+          id: offering.id,
+          category: offering.category,
+        }))
+      );
+    } catch (error) {
+      console.error('Failed to load offerings', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -129,50 +217,106 @@ export default function PlaceBookingPage() {
     setSelectedDate(dateStr);
     setShowBookingModal(true);
     setEditingBooking(null);
+    setBookingError('');
     setNewBooking({
       clientName: '',
       clientEmail: '',
       clientPhone: '',
       description: '',
-      time: '10:00'
+      time: '09:00'
     });
   };
 
-  const handleSaveBooking = () => {
+  const handleSaveBooking = async () => {
     if (!selectedDate) return;
 
-    if (editingBooking) {
-      // Update existing booking
-      const updatedBookings = bookings.map(booking =>
-        booking.id === editingBooking.id
-          ? {
-              ...booking,
-              clientName: newBooking.clientName,
-              clientEmail: newBooking.clientEmail,
-              clientPhone: newBooking.clientPhone,
-              description: newBooking.description,
-              time: newBooking.time
-            }
-          : booking
-      );
-      setBookings(updatedBookings);
-      localStorage.setItem('fashionBeautyBookings', JSON.stringify(updatedBookings));
-    } else {
-      // Create new booking
-      const booking: Booking = {
-        id: Date.now().toString(),
-        date: selectedDate,
-        clientName: newBooking.clientName,
-        clientEmail: newBooking.clientEmail,
-        clientPhone: newBooking.clientPhone,
-        description: newBooking.description,
-        category: activeCategory,
-        time: newBooking.time
-      };
+    const duplicateSlot = bookings.some(booking =>
+      booking.date === selectedDate &&
+      booking.category === activeCategory &&
+      booking.time === newBooking.time &&
+      (!editingBooking || booking.id !== editingBooking.id)
+    );
 
-      const updatedBookings = [...bookings, booking];
-      setBookings(updatedBookings);
-      localStorage.setItem('fashionBeautyBookings', JSON.stringify(updatedBookings));
+    if (duplicateSlot) {
+      setBookingError('This time slot is already booked for the selected date. Please choose a different time.');
+      return;
+    }
+
+    const vendorId = Number((user as any).id);
+    const offeringCategory = getPackageCategory(activeCategory);
+    const selectedOffering = offerings.find((offering) => offering.category === offeringCategory) || offerings[0];
+
+    if (!user || Number.isNaN(vendorId) || vendorId <= 0) {
+      setBookingError('Unable to save booking: invalid vendor session.');
+      return;
+    }
+
+    const payload = {
+      offeringId: selectedOffering?.id ?? 0,
+      vendorId,
+      eventDate: selectedDate,
+      eventTime: newBooking.time,
+      clientName: newBooking.clientName,
+      clientEmail: newBooking.clientEmail,
+      clientPhone: newBooking.clientPhone,
+      notes: newBooking.description,
+    };
+
+    try {
+      if (editingBooking) {
+        await apiFetch<any>(`/bookings/${editingBooking.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        const updatedBookings = bookings.map((booking) =>
+          booking.id === editingBooking.id
+            ? {
+                ...booking,
+                clientName: newBooking.clientName,
+                clientEmail: newBooking.clientEmail,
+                clientPhone: newBooking.clientPhone,
+                description: newBooking.description,
+                time: newBooking.time,
+              }
+            : booking
+        );
+        setBookings(updatedBookings);
+      } else {
+        if (!selectedOffering) {
+          setBookingError('No service package was found for this category. Please add a package first.');
+          return;
+        }
+
+        const createdBooking = await apiFetch<any>('/bookings', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        const booking: Booking = {
+          id: createdBooking.id.toString(),
+          date: selectedDate,
+          clientName: newBooking.clientName,
+          clientEmail: newBooking.clientEmail,
+          clientPhone: newBooking.clientPhone,
+          description: newBooking.description,
+          category: activeCategory,
+          time: newBooking.time,
+        };
+        setBookings((prev) => [...prev, booking]);
+      }
+
+      setShowBookingModal(false);
+      setNewBooking({
+        clientName: '',
+        clientEmail: '',
+        clientPhone: '',
+        description: '',
+        time: '10:00'
+      });
+      setBookingError('');
+    } catch (error) {
+      console.error('Failed to save booking', error);
+      setBookingError('Unable to save booking. Please try again later.');
     }
 
     setShowBookingModal(false);
@@ -187,6 +331,7 @@ export default function PlaceBookingPage() {
 
   const handleEditBooking = (booking: Booking) => {
     setEditingBooking(booking);
+    setBookingError('');
     setNewBooking({
       clientName: booking.clientName,
       clientEmail: booking.clientEmail,
@@ -196,12 +341,21 @@ export default function PlaceBookingPage() {
     });
   };
 
-  const handleDeleteBooking = (id: string) => {
-    if (confirm('Are you sure you want to delete this booking?')) {
-      const updatedBookings = bookings.filter(booking => booking.id !== id);
-      setBookings(updatedBookings);
-      localStorage.setItem('fashionBeautyBookings', JSON.stringify(updatedBookings));
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) {
+      return;
     }
+
+    try {
+      await apiFetch<any>(`/bookings/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete booking', error);
+    }
+
+    const updatedBookings = bookings.filter(booking => booking.id !== id);
+    setBookings(updatedBookings);
   };
 
   const nextMonth = () => {
@@ -222,11 +376,11 @@ export default function PlaceBookingPage() {
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              FB
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Fashion & Beauty</h2>
-              <p className="text-xs text-gray-500">Professional Beauty Services</p>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
+              <p className="text-xs text-gray-500">fashion & beauty</p>
             </div>
           </div>
         </div>
@@ -235,6 +389,7 @@ export default function PlaceBookingPage() {
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
             <button 
+              onClick={() => router.push('/dashboard/fashion-beauty/overview')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaChartBar /> Overview
@@ -266,7 +421,7 @@ export default function PlaceBookingPage() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/fashion-beauty/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -276,10 +431,10 @@ export default function PlaceBookingPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/fashion-beauty/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/fashion-beauty/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -296,6 +451,18 @@ export default function PlaceBookingPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <button onClick={() => router.push('/')} className="inline-flex items-center gap-2 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50">
+                <FaHome /> Home
+              </button>
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Vendor Dashboard</p>
+                <h1 className="text-2xl font-bold text-gray-900">Place a Booking</h1>
+              </div>
+            </div>
+          </div>
+
           {/* Banner Section */}
           <div 
             className="mb-6 md:mb-8 rounded-lg overflow-hidden shadow-lg" 
@@ -373,7 +540,7 @@ export default function PlaceBookingPage() {
                 className="px-4 py-2 rounded-lg font-medium text-white"
                 style={{backgroundColor: '#755A7B'}}
               >
-                ← Previous
+                Previous
               </button>
               <h3 className="text-xl font-bold text-gray-800">{monthName}</h3>
               <button
@@ -381,7 +548,7 @@ export default function PlaceBookingPage() {
                 className="px-4 py-2 rounded-lg font-medium text-white"
                 style={{backgroundColor: '#755A7B'}}
               >
-                Next →
+                Next
               </button>
             </div>
 
@@ -472,10 +639,10 @@ export default function PlaceBookingPage() {
                     <p className="text-sm text-gray-600 mb-2">{booking.description}</p>
                     <div className="flex gap-4 text-sm">
                       <span className="font-semibold" style={{color: '#755A7B'}}>
-                        📅 {new Date(booking.date).toLocaleDateString()}
+                        {new Date(booking.date).toLocaleDateString()}
                       </span>
                       <span className="font-semibold" style={{color: '#755A7B'}}>
-                        🕐 {booking.time}
+                        {booking.time}
                       </span>
                     </div>
                   </div>
@@ -521,7 +688,7 @@ export default function PlaceBookingPage() {
               <div>
                 <h4 className="text-white font-bold mb-4">Services</h4>
                 <ul className="space-y-2">
-                  <li><span className="text-purple-100 text-sm">Venue & Accommodation</span></li>
+                  <li><span className="text-purple-100 text-sm">Fashion & Beauty</span></li>
                   <li><span className="text-purple-100 text-sm">Photography</span></li>
                   <li><span className="text-purple-100 text-sm">Fashion & Beauty</span></li>
                   <li><span className="text-purple-100 text-sm">Entertainment</span></li>
@@ -649,12 +816,31 @@ export default function PlaceBookingPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Meeting Time</label>
-                  <input
-                    type="time"
-                    value={newBooking.time}
-                    onChange={(e) => setNewBooking({...newBooking, time: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    {timeSlots.map((slot) => {
+                      const booked = isTimeSlotBooked(selectedDate, slot, editingBooking?.id ?? undefined);
+                      const selected = newBooking.time === slot;
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={booked}
+                          onClick={() => {
+                            if (!booked) {
+                              setNewBooking({ ...newBooking, time: slot });
+                              setBookingError('');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${selected ? 'bg-red-500 text-white border-red-500' : booked ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-200 hover:border-purple-500 hover:text-purple-700'}`}
+                        >
+                          {slot}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {bookingError && (
+                    <p className="mt-2 text-sm text-red-600">{bookingError}</p>
+                  )}
                 </div>
 
                 <div>
@@ -694,3 +880,5 @@ export default function PlaceBookingPage() {
     </div>
   );
 }
+
+
