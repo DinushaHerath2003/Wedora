@@ -2,13 +2,13 @@ import { IsString, IsEmail, IsOptional, IsArray, IsBoolean } from 'class-validat
 
 export class CreateVendorDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
-  password: string;
+  password!: string;
 
   @IsString()
-  organizationName: string;
+  organizationName!: string;
 
   @IsOptional()
   @IsString()

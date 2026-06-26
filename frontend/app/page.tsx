@@ -394,11 +394,9 @@ export default function Home() {
         {/* Vendor Categories */}
         <div className="py-20">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-6" style={{fontFamily: 'var(--font-season)'}}>
-            Vendor Dashboards
+            Vendors
           </h2>
-          <p className="text-center text-gray-600 mb-12 max-w-2xl mx-auto">
-            Click on any category to access the vendor management dashboard (Dev Mode - No Authentication)
-          </p>
+          
           <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 px-4">
             {[
               { name: 'Venue & Accommodation', route: '/dashboard/venue-accommodation' },

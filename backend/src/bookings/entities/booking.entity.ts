@@ -21,53 +21,53 @@ export enum BookingStatus {
 @Entity('bookings')
 export class Booking {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
-  @Column({ type: 'varchar', nullable: true, default: null })
-  userId: string | null;
-
-  @Column()
-  offeringId: number;
+  @Column({ type: 'varchar', length: 36, nullable: true, default: null })
+  userId!: string | null;
 
   @Column()
-  vendorId: number;
+  offeringId!: number;
+
+  @Column()
+  vendorId!: number;
 
   @Column({ type: 'date' })
-  eventDate: Date;
+  eventDate!: Date;
 
   @Column({ type: 'varchar', nullable: true, default: null })
-  eventTime: string | null;
+  eventTime!: string | null;
 
   @Column({ type: 'varchar', nullable: true, default: null })
-  clientName: string | null;
+  clientName!: string | null;
 
   @Column({ type: 'varchar', nullable: true, default: null })
-  clientEmail: string | null;
+  clientEmail!: string | null;
 
   @Column({ type: 'varchar', nullable: true, default: null })
-  clientPhone: string | null;
+  clientPhone!: string | null;
 
   @Column({ type: 'int', nullable: true })
-  guestCount: number;
+  guestCount!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
-  budget: number;
+  budget!: number;
 
   @Column({
     type: 'enum',
     enum: BookingStatus,
     default: BookingStatus.PENDING,
   })
-  status: BookingStatus;
+  status!: BookingStatus;
 
   @Column({ nullable: true })
-  notes: string;
+  notes!: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   // Relations
   @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: true })
@@ -77,10 +77,12 @@ export class Booking {
   @ManyToOne(() => ServiceOffering, (offering) => offering.bookings, {
     onDelete: 'CASCADE',
   })
-  offering: ServiceOffering;
+  @JoinColumn({ name: 'offeringId' })
+  offering!: ServiceOffering;
 
   @ManyToOne(() => Vendor, (vendor) => vendor.bookings, {
     onDelete: 'CASCADE',
   })
-  vendor: Vendor;
+  @JoinColumn({ name: 'vendorId' })
+  vendor!: Vendor;
 }

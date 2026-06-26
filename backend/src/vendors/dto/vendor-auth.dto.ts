@@ -1,24 +1,30 @@
-import { IsEmail, IsString, MinLength, IsArray, IsOptional } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsArray,
+  IsOptional,
+} from 'class-validator';
 
 export class VendorSignupDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
   @MinLength(6)
-  password: string;
+  password!: string;
 
   @IsString()
-  organizationName: string;
+  organizationName!: string;
 
   @IsString()
-  phone: string;
+  phone!: string;
 
   @IsString()
-  location: string;
+  location!: string;
 
   @IsArray()
-  categories: string[];
+  categories!: string[];
 
   @IsOptional()
   @IsString()
@@ -27,15 +33,16 @@ export class VendorSignupDto {
 
 export class VendorLoginDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
-  password: string;
+  password!: string;
 }
 
 export class VendorAuthResponseDto {
-  accessToken: string;
-  user: {
+  accessToken!: string;
+
+  user!: {
     id: number;
     email: string;
     role: string;

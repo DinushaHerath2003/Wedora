@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
+import Toast, { ToastProps } from '@/components/Toast';
+import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome } from 'react-icons/fa';
 
 type CakeCategory = 'wedding-cakes' | 'tiered-cakes' | 'custom-designs';
 
@@ -17,9 +20,11 @@ interface Package {
   duration?: string;
   discount?: string;
   discountType?: string;
+  isDraft?: boolean;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -28,11 +33,15 @@ interface VendorUser {
 
 export default function CakeDecorationDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<VendorUser | null>(null);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [activeCategory, setActiveCategory] = useState<CakeCategory>('wedding-cakes');
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedPackageType, setSelectedPackageType] = useState<string>('');
+  const [toast, setToast] = useState<ToastProps | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [newPackage, setNewPackage] = useState({
     title: '',
     pricePerDay: '',
@@ -40,7 +49,7 @@ export default function CakeDecorationDashboard() {
     duration: '',
     discount: '',
     discountType: '',
-    photos: [] as File[],
+    photos: [] as string[],
   });
 
   const getCategoryBannerText = () => {
@@ -68,26 +77,93 @@ export default function CakeDecorationDashboard() {
     setSelectedPackageType(packageType);
   };
 
+  const normalizeCakeCategory = (category: string | undefined): CakeCategory => {
+    if (category === 'wedding-cakes') return 'wedding-cakes';
+    if (category === 'tiered-cakes') return 'tiered-cakes';
+    if (category === 'custom-designs') return 'custom-designs';
+    return 'wedding-cakes';
+  };
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setPackages(
+        offerings.map((offering) => ({
+          id: offering.id.toString(),
+          category: normalizeCakeCategory(offering.category),
+          title: offering.name,
+          pricePerDay: Number(offering.price),
+          services: offering.facilities || [],
+          photos: offering.images || [],
+          createdAt: new Date(offering.createdAt),
+          duration: offering.roomType || offering.description || undefined,
+          discount: offering.discount,
+          discountType: offering.discountType,
+          isDraft: offering.isDraft,
+        }))
+      );
+    } catch (error) {
+      console.error('Unable to load cake packages', error);
+    }
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Sweet Celebrations'
-      });
+
+    if (!userStr) {
+      router.push('/login');
+      return;
     }
-    
-    const savedPackages = localStorage.getItem('cakeDecorationPackages');
-    if (savedPackages) {
-      setPackages(JSON.parse(savedPackages));
+
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
     }
-  }, []);
+
+    const vendorId = Number(userData.id);
+    if (!Number.isFinite(vendorId) || vendorId <= 0) {
+      router.push('/login');
+      return;
+    }
+
+    fetchVendorPackages(vendorId);
+  }, [router]);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) {
+      setEditingPackageId(null);
+      return;
+    }
+
+    const loadPackageForEdit = async () => {
+      try {
+        const data = await apiFetch<any>(`/offerings/${editId}`);
+        setEditingPackageId(editId);
+        setActiveCategory(normalizeCakeCategory(data.category));
+        setSelectedServices(Array.isArray(data.facilities) ? data.facilities : []);
+        setSelectedPackageType(data.roomType || '');
+        setNewPackage({
+          title: data.name || '',
+          pricePerDay: String(data.price || ''),
+          services: Array.isArray(data.facilities) ? data.facilities.join(', ') : '',
+          duration: data.description || '',
+          discount: data.discount || '',
+          discountType: data.discountType || '',
+          photos: Array.isArray(data.images) ? data.images : [],
+        });
+        setToast({ message: 'Package loaded for editing.', type: 'success' });
+      } catch (error) {
+        console.error('Failed to load cake package for edit', error);
+        setToast({ message: 'Unable to load this package for editing.', type: 'error' });
+      }
+    };
+
+    loadPackageForEdit();
+  }, [searchParams]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -95,35 +171,126 @@ export default function CakeDecorationDashboard() {
     router.push('/');
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    try {
+      setUploadingImages(true);
+      const uploadedUrls = await Promise.all(files.map((file) => uploadImageToCloudinary(file)));
+      setNewPackage((prev) => ({
+        ...prev,
+        photos: [...prev.photos, ...uploadedUrls],
+      }));
+      setToast({ message: 'Images uploaded successfully.', type: 'success' });
+    } catch (error) {
+      setToast({
+        message: error instanceof Error ? error.message : 'Image upload failed',
+        type: 'error',
+      });
+    } finally {
+      setUploadingImages(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSubmitPackage = async (e?: React.FormEvent, isDraft = false) => {
+    if (e) e.preventDefault();
+
+    if (uploadingImages) {
+      setToast({ message: 'Please wait until image uploads are complete.', type: 'error' });
+      return;
+    }
+
+    const vendorId = Number((user as any)?.id);
+    if (!user || !Number.isFinite(vendorId) || vendorId <= 0) {
+      setToast({ message: 'Invalid user session. Please log in again.', type: 'error' });
+      router.push('/login');
+      return;
+    }
+
+    if (!newPackage.title.trim() || !newPackage.pricePerDay) {
+      setToast({ message: 'Please fill in the package name and price.', type: 'error' });
+      return;
+    }
+
+    const combinedServices = Array.from(
+      new Set([
+        ...selectedServices,
+        ...newPackage.services.split(',').map((service) => service.trim()).filter(Boolean),
+      ])
+    );
+
+    const payload = {
+      name: newPackage.title.trim(),
+      description: [selectedPackageType, newPackage.duration, newPackage.services].filter(Boolean).join(' | '),
+      category: activeCategory,
+      price: parseFloat(newPackage.pricePerDay),
+      facilities: combinedServices,
+      roomType: selectedPackageType || undefined,
+      discount: newPackage.discount || undefined,
+      discountType: newPackage.discountType || undefined,
+      images: newPackage.photos,
+      vendorId,
+      isDraft,
+    };
+
+    try {
+      const requestPath = editingPackageId ? `/offerings/${editingPackageId}` : '/offerings';
+      const createdPackage = await apiFetch<any>(requestPath, {
+        method: editingPackageId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      const packageData: Package = {
+        id: createdPackage.id.toString(),
+        category: normalizeCakeCategory(createdPackage.category),
+        title: createdPackage.name,
+        pricePerDay: Number(createdPackage.price),
+        services: createdPackage.facilities || [],
+        photos: createdPackage.images || [],
+        createdAt: new Date(createdPackage.createdAt),
+        duration: createdPackage.roomType || createdPackage.description || undefined,
+        discount: createdPackage.discount,
+        discountType: createdPackage.discountType,
+        isDraft: createdPackage.isDraft,
+      };
+
+      setPackages((prev) =>
+        editingPackageId
+          ? prev.map((pkg) => (pkg.id === packageData.id ? packageData : pkg))
+          : [...prev, packageData]
+      );
+
       setNewPackage({
-        ...newPackage,
-        photos: Array.from(e.target.files),
+        title: '',
+        pricePerDay: '',
+        services: '',
+        duration: '',
+        discount: '',
+        discountType: '',
+        photos: [],
+      });
+      setSelectedServices([]);
+      setSelectedPackageType('');
+      setEditingPackageId(null);
+      setToast({
+        message: editingPackageId
+          ? (isDraft ? 'Draft updated successfully.' : 'Package updated successfully.')
+          : (isDraft ? 'Package saved as draft successfully.' : 'Package posted successfully.'),
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to submit cake package', error);
+      setToast({
+        message: `Unable to save package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
       });
     }
   };
 
-  const handleSubmitPackage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    
-    const packageData: Package = {
-      id: Date.now().toString(),
-      category: activeCategory,
-      title: newPackage.title,
-      pricePerDay: parseFloat(newPackage.pricePerDay),
-      services: newPackage.services.split(',').map(s => s.trim()),
-      photos: newPackage.photos.map(f => URL.createObjectURL(f)),
-      createdAt: new Date(),
-      duration: newPackage.duration || undefined,
-      discount: newPackage.discount || undefined,
-      discountType: newPackage.discountType || undefined,
-    };
-
-    const updatedPackages = [...packages, packageData];
-    setPackages(updatedPackages);
-    localStorage.setItem('cakeDecorationPackages', JSON.stringify(updatedPackages));
-
+  const handleReset = () => {
     setNewPackage({
       title: '',
       pricePerDay: '',
@@ -133,10 +300,14 @@ export default function CakeDecorationDashboard() {
       discountType: '',
       photos: [],
     });
+    setSelectedServices([]);
+    setSelectedPackageType('');
+    setEditingPackageId(null);
   };
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
@@ -155,6 +326,7 @@ export default function CakeDecorationDashboard() {
           <div className="mb-6">
             <p className="text-xs font-semibold text-gray-400 mb-2 px-3">Main Menu</p>
             <button 
+              onClick={() => router.push('/dashboard/cake-decoration/overview')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaChartBar /> Overview
@@ -172,6 +344,7 @@ export default function CakeDecorationDashboard() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/cake-decoration/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -186,7 +359,7 @@ export default function CakeDecorationDashboard() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/cake-decoration/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -196,10 +369,10 @@ export default function CakeDecorationDashboard() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/cake-decoration/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/cake-decoration/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -234,6 +407,11 @@ export default function CakeDecorationDashboard() {
           >
             <h2 className="text-2xl md:text-4xl font-bold text-white mb-2" style={{textShadow: '3px 3px 6px rgba(0,0,0,0.7)'}}>{getCategoryBannerText()}</h2>
             <p className="text-sm md:text-xl text-white" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.7)'}}>Create and manage your cake decoration packages</p>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 mb-4 text-sm text-gray-600">
+            <span>Loaded packages: <span className="font-semibold text-gray-900">{packages.filter((pkg) => pkg.category === activeCategory).length}</span></span>
+            {editingPackageId && <span className="font-semibold" style={{color: '#755A7B'}}>Editing package #{editingPackageId}</span>}
           </div>
 
           {/* Category Tabs */}
@@ -332,7 +510,7 @@ export default function CakeDecorationDashboard() {
           </div>
 
           {/* Package Form */}
-          <form onSubmit={handleSubmitPackage} className="bg-white rounded-lg shadow p-4 md:p-6">
+          <form onSubmit={(event) => handleSubmitPackage(event, false)} className="bg-white rounded-lg shadow p-4 md:p-6">
             <h3 className="text-lg font-bold mb-6" style={{color: '#755A7B'}}>Package Details</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -440,23 +618,25 @@ export default function CakeDecorationDashboard() {
 
             <div className="mt-8 flex gap-4">
               <button
+                type="button"
+                onClick={(event) => handleSubmitPackage(event as unknown as React.FormEvent, true)}
+                disabled={uploadingImages}
+                className="flex-1 py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all disabled:opacity-60"
+                style={{backgroundColor: '#755A7B'}}
+              >
+                {editingPackageId ? 'Update Draft' : 'Save Draft'}
+              </button>
+              <button
                 type="submit"
+                disabled={uploadingImages}
                 className="flex-1 py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all"
                 style={{backgroundColor: '#755A7B'}}
               >
-                Post Package
+                {editingPackageId ? 'Update Package' : 'Post Package'}
               </button>
               <button
                 type="button"
-                onClick={() => setNewPackage({
-                  title: '',
-                  pricePerDay: '',
-                  services: '',
-                  duration: '',
-                  discount: '',
-                  discountType: '',
-                  photos: [],
-                })}
+                onClick={handleReset}
                 className="px-8 py-3 border-2 rounded-lg font-medium hover:bg-gray-50 transition-all"
                 style={{borderColor: '#755A7B', color: '#755A7B'}}
               >

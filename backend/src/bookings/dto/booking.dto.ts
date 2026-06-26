@@ -7,16 +7,16 @@ export class CreateBookingDto {
   userId?: string;
 
   @IsNumber()
-  offeringId: number;
+  offeringId!: number;
 
   @IsNumber()
-  vendorId: number;
+  vendorId!: number;
 
   @IsString()
-  eventDate: string;
+  eventDate!: string;
 
   @IsString()
-  eventTime: string;
+  eventTime!: string;
 
   @IsOptional()
   @IsString()

@@ -13,45 +13,47 @@ import { Review } from '../../reviews/entities/review.entity';
 @Entity('vendors')
 export class Vendor {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Column()
-  password: string;
+  password!: string;
 
   @Column()
-  organizationName: string;
+  organizationName!: string;
 
   @Column({ nullable: true })
-  phone: string;
+  phone!: string;
 
   @Column({ nullable: true })
-  location: string;
+  location!: string;
 
   @Column('simple-array', { nullable: true })
-  categories: string[];
+  categories!: string[];
 
   @Column({ nullable: true })
-  contactPerson: string;
+  contactPerson!: string;
 
   @Column({ default: false })
-  isActive: boolean;
+  isActive!: boolean;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   // Relations
-  @OneToMany(() => ServiceOffering, (offering) => offering.vendor, { cascade: true })
-  offerings: ServiceOffering[];
+  @OneToMany(() => ServiceOffering, (offering) => offering.vendor, {
+    cascade: true,
+  })
+  offerings!: ServiceOffering[];
 
   @OneToMany(() => Booking, (booking) => booking.vendor)
-  bookings: Booking[];
+  bookings!: Booking[];
 
   @OneToMany(() => Review, (review) => review.vendor)
-  reviews: Review[];
+  reviews!: Review[];
 }

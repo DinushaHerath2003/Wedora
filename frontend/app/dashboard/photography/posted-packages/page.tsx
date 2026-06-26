@@ -46,11 +46,7 @@ interface OfferingResponse {
 
 export default function PostedPackagesPage() {
   const router = useRouter();
-  const [user] = useState<VendorUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const userStr = localStorage.getItem('user');
-    return userStr ? (JSON.parse(userStr) as VendorUser) : null;
-  });
+  const [user, setUser] = useState<VendorUser | null>(null);
   const [activeCategory, setActiveCategory] = useState<PhotoCategory>('wedding-photography');
   const [toast, setToast] = useState<ToastProps | null>(null);
 
@@ -132,6 +128,7 @@ export default function PostedPackagesPage() {
     
     if (userStr) {
       const userData = JSON.parse(userStr) as VendorUser;
+      setUser(userData);
       const vendorId = Number(userData.id);
       if (userData.role !== 'vendor') {
         router.push('/');

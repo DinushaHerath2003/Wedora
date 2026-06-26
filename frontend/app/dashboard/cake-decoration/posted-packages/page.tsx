@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {  } from "react-icons/fa6";
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
 
 type CakeCategory = 'wedding-cakes' | 'tiered-cakes' | 'custom-designs';
@@ -18,9 +18,11 @@ interface Package {
   duration?: string;
   discount?: string;
   discountType?: string;
+  isDraft?: boolean;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -31,80 +33,7 @@ export default function PostedPackagesPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
   const [activeCategory, setActiveCategory] = useState<CakeCategory>('wedding-cakes');
-
-  // Mock packages data
-  const mockPackages: Package[] = [
-    {
-      id: '1',
-      category: 'wedding-cakes',
-      title: 'Elegant Wedding Cake',
-      pricePerDay: 75000,
-      services: ['Custom Cake Design', 'Tiered Cakes', 'Fondant Work', 'Sugar Flowers'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      duration: '3-Tier',
-      discount: '15%',
-      discountType: 'Early Bird'
-    },
-    {
-      id: '2',
-      category: 'wedding-cakes',
-      title: 'Royal Wedding Cake',
-      pricePerDay: 125000,
-      services: ['Custom Design', 'Multi-tier', 'Sugar Flowers', 'Cake Toppers', 'Delivery'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      duration: '5-Tier',
-      discount: '10%',
-      discountType: 'Weekend Special'
-    },
-    {
-      id: '3',
-      category: 'tiered-cakes',
-      title: 'Classic Tiered Cake',
-      pricePerDay: 65000,
-      services: ['Tiered Cakes', 'Fondant Work', 'Flavor Consultation', 'Delivery Service'],
-      photos: ['/pack3.png'],
-      createdAt: new Date(),
-      duration: '3-Tier'
-    },
-    {
-      id: '4',
-      category: 'tiered-cakes',
-      title: 'Luxury Multi-Tier',
-      pricePerDay: 95000,
-      services: ['Custom Design', 'Tiered Cakes', 'Sugar Flowers', 'Cake Tasting', 'Delivery'],
-      photos: ['/pack4.png'],
-      createdAt: new Date(),
-      duration: '4-Tier',
-      discount: '12%',
-      discountType: 'Season Discount'
-    },
-    {
-      id: '5',
-      category: 'custom-designs',
-      title: 'Custom Theme Cake',
-      pricePerDay: 55000,
-      services: ['Custom Cake Design', 'Cake Toppers', 'Flavor Consultation'],
-      photos: ['/pack5.png'],
-      createdAt: new Date(),
-      duration: '2-Tier'
-    },
-    {
-      id: '6',
-      category: 'custom-designs',
-      title: 'Artistic Custom Design',
-      pricePerDay: 85000,
-      services: ['Custom Design', 'Fondant Work', 'Sugar Flowers', 'Cake Toppers', 'Tasting', 'Delivery'],
-      photos: ['/pack6.png'],
-      createdAt: new Date(),
-      duration: '3-Tier',
-      discount: '18%',
-      discountType: 'Bulk Booking'
-    }
-  ];
-
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  const [packages, setPackages] = useState<Package[]>([]);
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -134,19 +63,58 @@ export default function PostedPackagesPage() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Sweet Celebrations'
-      });
+
+    if (!userStr) {
+      router.push('/login');
+      return;
     }
+
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
+    }
+
+    const vendorId = Number(userData.id);
+    if (!Number.isFinite(vendorId) || vendorId <= 0) {
+      router.push('/login');
+      return;
+    }
+
+    fetchVendorPackages(vendorId);
   }, []);
+
+  const normalizeCakeCategory = (category: string | undefined): CakeCategory => {
+    if (category === 'wedding-cakes') return 'wedding-cakes';
+    if (category === 'tiered-cakes') return 'tiered-cakes';
+    if (category === 'custom-designs') return 'custom-designs';
+    return 'wedding-cakes';
+  };
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setPackages(
+        offerings.map((offering) => ({
+          id: offering.id.toString(),
+          category: normalizeCakeCategory(offering.category),
+          title: offering.name,
+          pricePerDay: Number(offering.price),
+          services: offering.facilities || [],
+          photos: offering.images || [],
+          createdAt: new Date(offering.createdAt),
+          duration: offering.roomType || offering.description || undefined,
+          discount: offering.discount,
+          discountType: offering.discountType,
+          isDraft: offering.isDraft,
+        }))
+      );
+    } catch (error) {
+      console.error('Unable to load cake packages', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -154,9 +122,14 @@ export default function PostedPackagesPage() {
     router.push('/');
   };
 
-  const handleDeletePackage = (id: string) => {
+  const handleDeletePackage = async (id: string) => {
     if (confirm('Are you sure you want to delete this package?')) {
-      setPackages(packages.filter(pkg => pkg.id !== id));
+      try {
+        await apiFetch(`/offerings/${id}`, { method: 'DELETE' });
+        setPackages(packages.filter(pkg => pkg.id !== id));
+      } catch (error) {
+        console.error('Unable to delete cake package', error);
+      }
     }
   };
 
@@ -304,6 +277,11 @@ export default function PostedPackagesPage() {
             </div>
           </div>
 
+          <div className="flex items-center justify-between gap-4 mb-4 text-sm text-gray-600">
+            <span>Loaded packages: <span className="font-semibold text-gray-900">{packages.filter((pkg) => pkg.category === activeCategory && !pkg.isDraft).length}</span></span>
+            <span className="font-semibold" style={{color: '#755A7B'}}>Drafts: {packages.filter((pkg) => pkg.category === activeCategory && pkg.isDraft).length}</span>
+          </div>
+
           {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
             <span>mainmenu</span>
@@ -374,6 +352,7 @@ export default function PostedPackagesPage() {
                   {/* Action Buttons */}
                   <div className="flex gap-2">
                     <button 
+                      onClick={() => router.push(`/dashboard/cake-decoration?edit=${pkg.id}`)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all"
                       style={{backgroundColor: '#755A7B'}}
                     >
