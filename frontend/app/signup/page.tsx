@@ -102,11 +102,6 @@ export default function SignupPage() {
       }
     }
 
-    if (role === UserRole.ADMIN && !formData.name) {
-      setErrors('Name is required');
-      return false;
-    }
-
     return true;
   };
 
@@ -136,6 +131,7 @@ export default function SignupPage() {
 
         localStorage.setItem('token', vendorResponse.accessToken);
         localStorage.setItem('user', JSON.stringify(vendorResponse.user));
+        window.dispatchEvent(new Event('auth-changed'));
         router.push(getVendorDashboardPath(vendorResponse.user.categories));
       } else {
         const userResponse = await apiFetch<UserSignupResponse>('/auth/signup', {
@@ -150,13 +146,11 @@ export default function SignupPage() {
 
         localStorage.setItem('token', userResponse.accessToken);
         localStorage.setItem('user', JSON.stringify(userResponse.user));
+        window.dispatchEvent(new Event('auth-changed'));
 
         switch (userResponse.user.role) {
           case 'user':
             router.push('/');
-            break;
-          case 'admin':
-            router.push('/admin/dashboard');
             break;
           default:
             router.push('/');
@@ -209,7 +203,6 @@ export default function SignupPage() {
               <option value="" style={{color: '#000'}}>Choose a role...</option>
               <option value={UserRole.USER} style={{color: '#000'}}>User</option>
               <option value={UserRole.VENDOR} style={{color: '#000'}}>Vendor</option>
-              <option value={UserRole.ADMIN} style={{color: '#000'}}>Admin</option>
             </select>
           </div>
 
@@ -248,8 +241,8 @@ export default function SignupPage() {
           {/* Dynamic Form Fields */}
           {role && (
             <div className="space-y-4 border-t pt-6" style={{borderColor: 'rgba(255, 255, 255, 0.3)'}}>
-              {/* User/Admin Name Field */}
-              {(role === UserRole.USER || role === UserRole.ADMIN) && (
+              {/* User Name Field */}
+              {role === UserRole.USER && (
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-white">
                     Name *

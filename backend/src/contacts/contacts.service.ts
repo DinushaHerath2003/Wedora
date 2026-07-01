@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Raw, Repository } from 'typeorm';
 import {
   ContactMessage,
   ContactMessageStatus,
@@ -18,12 +18,32 @@ export class ContactsService {
   ) {}
 
   async create(dto: CreateContactMessageDto): Promise<ContactMessage> {
-    const message = this.contactRepository.create(dto);
+    const message = this.contactRepository.create({
+      ...dto,
+      email: dto.email.trim().toLowerCase(),
+    });
     return this.contactRepository.save(message);
   }
 
   async findAll(): Promise<ContactMessage[]> {
     return this.contactRepository.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async findByEmail(email?: string): Promise<ContactMessage[]> {
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email is required');
+    }
+
+    return this.contactRepository.find({
+      where: {
+        email: Raw((alias) => `LOWER(${alias}) = :email`, {
+          email: normalizedEmail,
+        }),
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async findOne(id: number): Promise<ContactMessage> {

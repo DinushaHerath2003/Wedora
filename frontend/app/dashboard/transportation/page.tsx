@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
+import Toast, { ToastProps } from '@/components/Toast';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaUserCircle, FaChartBar, FaMoneyBillWave, FaFileInvoice, FaUndo, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
 
 type TransportCategory = 'wedding-cars' | 'luxury-vehicles' | 'guest-transport';
@@ -17,9 +20,11 @@ interface Package {
   duration?: string;
   discount?: string;
   discountType?: string;
+  isDraft?: boolean;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -28,11 +33,15 @@ interface VendorUser {
 
 export default function TransportationDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<VendorUser | null>(null);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [packages, setPackages] = useState<Package[]>([]);
   const [activeCategory, setActiveCategory] = useState<TransportCategory>('wedding-cars');
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedPackageType, setSelectedPackageType] = useState<string>('');
+  const [toast, setToast] = useState<ToastProps | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [newPackage, setNewPackage] = useState({
     title: '',
     pricePerDay: '',
@@ -40,8 +49,11 @@ export default function TransportationDashboard() {
     duration: '',
     discount: '',
     discountType: '',
-    photos: [] as File[],
+    photos: [] as string[],
   });
+
+  const organizationLabel = user?.organizationName || user?.name || 'Transportation Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
 
   const getCategoryBannerText = () => {
     switch(activeCategory) {
@@ -68,26 +80,101 @@ export default function TransportationDashboard() {
     setSelectedPackageType(packageType);
   };
 
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Elite Transport'
+  const normalizeTransportCategory = (category: string | undefined): TransportCategory => {
+    if (category === 'luxury-vehicles') return 'luxury-vehicles';
+    if (category === 'guest-transport') return 'guest-transport';
+    return 'wedding-cars';
+  };
+
+  const mapOfferingToPackage = (offering: any): Package => ({
+    id: offering.id.toString(),
+    category: normalizeTransportCategory(offering.category),
+    title: offering.name || '',
+    pricePerDay: Number(offering.price || 0),
+    services: Array.isArray(offering.facilities) ? offering.facilities : [],
+    photos: Array.isArray(offering.images) ? offering.images : [],
+    createdAt: new Date(offering.createdAt),
+    duration: offering.description || undefined,
+    discount: offering.discount,
+    discountType: offering.discountType,
+    isDraft: Boolean(offering.isDraft),
+  });
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setPackages(offerings.map(mapOfferingToPackage));
+    } catch (error) {
+      console.error('Unable to load transportation packages', error);
+      setToast({
+        message: `Failed to load packages: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
       });
     }
-    
-    const savedPackages = localStorage.getItem('transportationPackages');
-    if (savedPackages) {
-      setPackages(JSON.parse(savedPackages));
+  };
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+
+    if (!userStr) {
+      router.push('/login');
+      return;
     }
-  }, []);
+
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+
+    const vendorId = Number(userData.id);
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
+    }
+
+    if (Number.isFinite(vendorId) && vendorId > 0) {
+      fetchVendorPackages(vendorId);
+    } else {
+      router.push('/login');
+    }
+  }, [router]);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) {
+      setEditingPackageId(null);
+      return;
+    }
+
+    const loadPackageForEdit = async () => {
+      try {
+        const data = await apiFetch<any>(`/offerings/${editId}`);
+        setEditingPackageId(editId);
+        setActiveCategory(normalizeTransportCategory(data.category));
+        setSelectedPackageType(data.roomType || '');
+        setSelectedServices(Array.isArray(data.facilities) ? data.facilities : []);
+        setNewPackage({
+          title: data.name || '',
+          pricePerDay: String(data.price || ''),
+          services: Array.isArray(data.facilities) ? data.facilities.join(', ') : '',
+          duration: data.description || '',
+          discount: data.discount || '',
+          discountType: data.discountType || '',
+          photos: Array.isArray(data.images) ? data.images : [],
+        });
+        setToast({
+          message: 'Package loaded for editing. Update the details and save.',
+          type: 'success',
+        });
+      } catch (error) {
+        console.error('Failed to load transportation package for edit', error);
+        setToast({
+          message: 'Unable to load this package for editing.',
+          type: 'error',
+        });
+      }
+    };
+
+    loadPackageForEdit();
+  }, [searchParams]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -95,35 +182,36 @@ export default function TransportationDashboard() {
     router.push('/');
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setNewPackage({
-        ...newPackage,
-        photos: Array.from(e.target.files),
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    try {
+      setUploadingImages(true);
+      const uploadedUrls = await Promise.all(files.map((file) => uploadImageToCloudinary(file)));
+      setNewPackage((prev) => ({
+        ...prev,
+        photos: [...prev.photos, ...uploadedUrls],
+      }));
+      setToast({
+        message: 'Images uploaded successfully.',
+        type: 'success',
       });
+    } catch (error) {
+      setToast({
+        message: error instanceof Error ? error.message : 'Image upload failed',
+        type: 'error',
+      });
+    } finally {
+      setUploadingImages(false);
+      e.target.value = '';
     }
   };
 
-  const handleSubmitPackage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    
-    const packageData: Package = {
-      id: Date.now().toString(),
-      category: activeCategory,
-      title: newPackage.title,
-      pricePerDay: parseFloat(newPackage.pricePerDay),
-      services: newPackage.services.split(',').map(s => s.trim()),
-      photos: newPackage.photos.map(f => URL.createObjectURL(f)),
-      createdAt: new Date(),
-      duration: newPackage.duration || undefined,
-      discount: newPackage.discount || undefined,
-      discountType: newPackage.discountType || undefined,
-    };
-
-    const updatedPackages = [...packages, packageData];
-    setPackages(updatedPackages);
-    localStorage.setItem('transportationPackages', JSON.stringify(updatedPackages));
-
+  const resetForm = () => {
+    setEditingPackageId(null);
+    setSelectedServices([]);
+    setSelectedPackageType('');
     setNewPackage({
       title: '',
       pricePerDay: '',
@@ -135,18 +223,102 @@ export default function TransportationDashboard() {
     });
   };
 
+  const handleSubmitPackage = async (e?: React.FormEvent, isDraft = false) => {
+    if (e) e.preventDefault();
+
+    if (uploadingImages) {
+      setToast({
+        message: 'Please wait until image uploads are complete.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const vendorId = Number((user as any)?.id);
+    if (!user || !Number.isFinite(vendorId) || vendorId <= 0) {
+      setToast({
+        message: 'Invalid vendor session. Please log in again.',
+        type: 'error',
+      });
+      router.push('/login');
+      return;
+    }
+
+    if (!newPackage.title.trim() || !newPackage.pricePerDay) {
+      setToast({
+        message: 'Please enter the service name and price.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const typedServices = newPackage.services
+      .split(',')
+      .map((service) => service.trim())
+      .filter(Boolean);
+    const services = Array.from(new Set([...selectedServices, ...typedServices]));
+
+    const payload = {
+      name: newPackage.title.trim(),
+      description: newPackage.duration.trim(),
+      category: activeCategory,
+      price: parseFloat(newPackage.pricePerDay),
+      facilities: services,
+      roomType: selectedPackageType || undefined,
+      discount: newPackage.discount || undefined,
+      discountType: newPackage.discountType || undefined,
+      images: newPackage.photos,
+      vendorId,
+      isDraft,
+    };
+
+    try {
+      const requestPath = editingPackageId ? `/offerings/${editingPackageId}` : '/offerings';
+      const savedPackage = await apiFetch<any>(requestPath, {
+        method: editingPackageId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+      const packageData = mapOfferingToPackage(savedPackage);
+      setPackages((prev) =>
+        editingPackageId
+          ? prev.map((pkg) => (pkg.id === packageData.id ? packageData : pkg))
+          : [...prev, packageData],
+      );
+      resetForm();
+      setToast({
+        message: editingPackageId
+          ? (isDraft ? 'Draft updated successfully.' : 'Package updated successfully.')
+          : (isDraft ? 'Package saved as draft successfully.' : 'Package posted successfully.'),
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to save transportation package', error);
+      setToast({
+        message: `Failed to save package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              ET
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Elite Transport</h2>
-              <p className="text-xs text-gray-500">Premium Transportation Services</p>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
+              <p className="text-xs text-gray-500">transportation services</p>
             </div>
           </div>
         </div>
@@ -172,6 +344,7 @@ export default function TransportationDashboard() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/transportation/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -186,7 +359,7 @@ export default function TransportationDashboard() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -196,10 +369,10 @@ export default function TransportationDashboard() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -343,7 +516,7 @@ export default function TransportationDashboard() {
                   required
                   value={newPackage.title}
                   onChange={(e) => setNewPackage({...newPackage, title: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
                   placeholder="e.g., Premium Wedding Car Package"
                   style={{borderColor: '#e5e7eb'}}
                 />
@@ -356,7 +529,7 @@ export default function TransportationDashboard() {
                   required
                   value={newPackage.pricePerDay}
                   onChange={(e) => setNewPackage({...newPackage, pricePerDay: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
                   placeholder="Enter price"
                   style={{borderColor: '#e5e7eb'}}
                 />
@@ -368,7 +541,7 @@ export default function TransportationDashboard() {
                   type="text"
                   value={newPackage.duration}
                   onChange={(e) => setNewPackage({...newPackage, duration: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
                   placeholder="e.g., 4-5 hours"
                   style={{borderColor: '#e5e7eb'}}
                 />
@@ -380,7 +553,7 @@ export default function TransportationDashboard() {
                   type="text"
                   value={newPackage.services}
                   onChange={(e) => setNewPackage({...newPackage, services: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
                   placeholder="e.g., DJ, Sound, Lighting"
                   style={{borderColor: '#e5e7eb'}}
                 />
@@ -392,7 +565,7 @@ export default function TransportationDashboard() {
                   type="number"
                   value={newPackage.discount}
                   onChange={(e) => setNewPackage({...newPackage, discount: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
                   placeholder="Enter discount percentage"
                   style={{borderColor: '#e5e7eb'}}
                 />
@@ -403,7 +576,7 @@ export default function TransportationDashboard() {
                 <select
                   value={newPackage.discountType}
                   onChange={(e) => setNewPackage({...newPackage, discountType: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium"
                   style={{borderColor: '#e5e7eb'}}
                 >
                   <option value="">Select type</option>
@@ -415,48 +588,71 @@ export default function TransportationDashboard() {
             </div>
 
             <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload Photos</label>
-              <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{borderColor: '#755A7B'}}>
-                <FaUpload className="mx-auto text-4xl mb-3" style={{color: '#755A7B'}} />
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Upload Img</h3>
+              <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 md:p-6 mb-4">
+                <div className="aspect-square bg-gray-50 rounded-lg mb-4 overflow-hidden">
+                  {newPackage.photos.length > 0 ? (
+                    <img src={newPackage.photos[0]} alt="Main" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-24 md:w-32 h-24 md:h-32 bg-purple-100 rounded-lg"></div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {[0, 1, 2].map((idx) => (
+                    <div key={idx} className="aspect-square bg-purple-100 rounded-lg overflow-hidden">
+                      {newPackage.photos[idx + 1] && (
+                        <img src={newPackage.photos[idx + 1]} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('photo-upload')?.click()}
+                    disabled={uploadingImages}
+                    className="aspect-square bg-purple-100 rounded-lg flex items-center justify-center text-2xl"
+                    style={{color: '#755A7B'}}
+                  >
+                    {uploadingImages ? '...' : '+'}
+                  </button>
+                </div>
+
+                {uploadingImages && (
+                  <p className="mt-3 text-sm text-gray-500">Uploading images to Cloudinary...</p>
+                )}
+
                 <input
+                  id="photo-upload"
                   type="file"
                   multiple
                   accept="image/*"
                   onChange={handlePhotoChange}
                   className="hidden"
-                  id="photo-upload"
                 />
-                <label htmlFor="photo-upload" className="cursor-pointer text-gray-600 hover:text-purple-600">
-                  Click to upload or drag and drop
-                  <p className="text-sm text-gray-500 mt-1">PNG, JPG, GIF up to 10MB</p>
-                </label>
-                {newPackage.photos.length > 0 && (
-                  <p className="mt-2 text-sm" style={{color: '#755A7B'}}>
-                    {newPackage.photos.length} file(s) selected
-                  </p>
-                )}
               </div>
             </div>
 
             <div className="mt-8 flex gap-4">
               <button
+                type="button"
+                onClick={() => handleSubmitPackage(undefined, true)}
+                className="flex-1 py-3 px-6 rounded-lg border-2 font-medium hover:bg-gray-50 transition-all"
+                style={{borderColor: '#755A7B', color: '#755A7B'}}
+              >
+                <FaFileInvoice className="inline mr-2" /> {editingPackageId ? 'Update Draft' : 'Save Draft'}
+              </button>
+              <button
                 type="submit"
                 className="flex-1 py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all"
                 style={{backgroundColor: '#755A7B'}}
               >
-                Post Package
+                {editingPackageId ? 'Save Changes' : 'Post Package'}
               </button>
               <button
                 type="button"
-                onClick={() => setNewPackage({
-                  title: '',
-                  pricePerDay: '',
-                  services: '',
-                  duration: '',
-                  discount: '',
-                  discountType: '',
-                  photos: [],
-                })}
+                onClick={resetForm}
                 className="px-8 py-3 border-2 rounded-lg font-medium hover:bg-gray-50 transition-all"
                 style={{borderColor: '#755A7B', color: '#755A7B'}}
               >

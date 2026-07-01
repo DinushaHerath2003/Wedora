@@ -1,8 +1,10 @@
 import { IsString, IsNumber, IsOptional, IsEnum } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { BookingStatus } from '../entities/booking.entity';
 
 export class CreateBookingDto {
   @IsOptional()
+  @Transform(({ value }) => (value === undefined || value === null ? value : String(value)))
   @IsString()
   userId?: string;
 

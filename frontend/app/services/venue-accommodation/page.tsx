@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { FaHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaStar, FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
+import { useCartCount } from '@/lib/use-cart-count';
+import { FaHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 type VenueCategory = 'hotel-rooms' | 'banquet-halls' | 'outdoor-venues';
 
@@ -40,8 +41,6 @@ interface DisplayVendor {
   organizationName: string;
   category: VenueCategory[];
   location: string;
-  rating: number;
-  reviewCount: number;
   minPrice: number;
   maxPrice: number;
   image: string;
@@ -61,18 +60,12 @@ export default function VenueAccommodationServices() {
   const [vendors, setVendors] = useState<DisplayVendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [facilities, setFacilities] = useState<string[]>(['WiFi', 'AC', 'Parking', 'Catering', 'Stage', 'Beach Access', 'Outdoor Setup']);
+  const cartCount = useCartCount(user);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Dinusha Herath',
-        email: 'DinushaHerath@gmail.com'
-      });
-    }
+    const userData = userStr ? JSON.parse(userStr) : null;
+    setUser(userData);
     fetchVendorOfferings();
   }, []);
 
@@ -130,8 +123,6 @@ export default function VenueAccommodationServices() {
           organizationName: v.organizationName,
           category: Array.from(v.categories) as VenueCategory[],
           location: v.location,
-          rating: 4.6,
-          reviewCount: Math.floor(Math.random() * 200) + 50,
           minPrice,
           maxPrice,
           image: '/ven1.png',
@@ -153,6 +144,8 @@ export default function VenueAccommodationServices() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setUser(null);
+    window.dispatchEvent(new Event('auth-changed'));
     router.push('/');
   };
 
@@ -280,7 +273,7 @@ export default function VenueAccommodationServices() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-purple-700 relative" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 
@@ -498,14 +491,6 @@ export default function VenueAccommodationServices() {
                 <div className="flex items-center gap-1 mb-2">
                   <FaMapMarkerAlt className="text-gray-400 text-sm" />
                   <span className="text-sm text-gray-600">{vendor.location}</span>
-                </div>
-
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center gap-1">
-                    <FaStar style={{color: '#FFD700'}} />
-                    <span className="font-semibold text-gray-800">{vendor.rating}</span>
-                  </div>
-                  <span className="text-sm text-gray-500">({vendor.reviewCount} reviews)</span>
                 </div>
 
                 <div className="mb-3">

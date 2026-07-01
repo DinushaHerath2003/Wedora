@@ -25,10 +25,14 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
+    if (role === UserRole.ADMIN) {
+      throw new BadRequestException('Admin accounts must be created by an existing administrator');
+    }
+
     // Validate role-specific fields
-    if (role === UserRole.USER || role === UserRole.ADMIN) {
+    if (role === UserRole.USER) {
       if (!name) {
-        throw new BadRequestException('Name is required for users and admins');
+        throw new BadRequestException('Name is required for users');
       }
     }
 
@@ -49,7 +53,7 @@ export class AuthService {
       email,
       password: hashedPassword,
       role,
-      ...(role === UserRole.USER || role === UserRole.ADMIN ? { name } : {}),
+      ...(role === UserRole.USER ? { name } : {}),
       ...(role === UserRole.VENDOR ? { organizationName, location, categories } : {}),
     });
 

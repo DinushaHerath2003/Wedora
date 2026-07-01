@@ -102,6 +102,8 @@ interface BudgetPackageDetail {
   image: string;
   vendorName: string;
   quantity?: number;
+  href?: string;
+  serviceSlug?: string;
 }
 
 interface BudgetItem {
@@ -412,6 +414,8 @@ export default function PhotographyVideographyServices() {
       image: pkg.image,
       vendorName: pkg.vendorName,
       quantity: 1,
+      href: `/services/photography-videography/${pkg.vendorId}`,
+      serviceSlug: 'photography-videography',
     });
     localStorage.setItem(budgetKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
 

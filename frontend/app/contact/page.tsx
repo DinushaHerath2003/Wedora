@@ -1,9 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from "next/link";
-import { FaEnvelope, FaPhone, FaMapMarkerAlt, FaFacebook, FaInstagram, FaTwitter } from 'react-icons/fa';
+import { FaEnvelope, FaPhone, FaMapMarkerAlt, FaFacebook, FaInstagram, FaTwitter, FaReply, FaClock, FaUserCircle, FaSignOutAlt, FaSyncAlt } from 'react-icons/fa';
 import { apiFetch } from '@/lib/api';
+
+interface ContactMessage {
+  id: number;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'new' | 'read' | 'replied';
+  adminReply?: string | null;
+  repliedAt?: string | null;
+  createdAt: string;
+}
+
+type NavUser = {
+  name?: string;
+  email?: string;
+};
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -16,6 +33,87 @@ export default function Contact() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesEmail, setMessagesEmail] = useState('');
+  const [messagesError, setMessagesError] = useState('');
+  const [user, setUser] = useState<NavUser | null>(null);
+
+  const loadContactMessages = async () => {
+    if (!user?.email) return;
+    setMessagesLoading(true);
+    setMessagesError('');
+    try {
+      const data = await apiFetch<ContactMessage[]>('/contact/my');
+      setContactMessages(data);
+      setMessagesEmail(user.email);
+    } catch (err) {
+      setContactMessages([]);
+      setMessagesError(err instanceof Error ? err.message : 'Failed to load your messages.');
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const loadUser = () => {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
+      setUser(null);
+      setContactMessages([]);
+      setMessagesEmail('');
+      return;
+    }
+
+    try {
+      const user = JSON.parse(userStr) as { name?: string; email?: string };
+      const normalizedUser = {
+        ...user,
+        email: user.email?.trim().toLowerCase(),
+      };
+      setUser(normalizedUser);
+      setFormData((current) => ({
+        ...current,
+        name: normalizedUser.name || current.name,
+        email: normalizedUser.email || current.email,
+      }));
+    } catch {
+      setUser(null);
+    }
+  };
+
+  useEffect(() => {
+    loadUser();
+    window.addEventListener('auth-changed', loadUser);
+    window.addEventListener('storage', loadUser);
+
+    return () => {
+      window.removeEventListener('auth-changed', loadUser);
+      window.removeEventListener('storage', loadUser);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.email) return;
+
+    loadContactMessages();
+    const refresh = () => loadContactMessages();
+    window.addEventListener('focus', refresh);
+    const intervalId = window.setInterval(refresh, 30000);
+
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(intervalId);
+    };
+  }, [user?.email]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setContactMessages([]);
+    setMessagesEmail('');
+    window.dispatchEvent(new Event('auth-changed'));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,18 +122,25 @@ export default function Contact() {
     setSuccess(false);
 
     try {
+      const submittedEmail = (user?.email || formData.email).trim().toLowerCase();
       await apiFetch('/contact', {
         method: 'POST',
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          email: submittedEmail,
+        }),
       });
       setSuccess(true);
       setFormData({
-        name: '',
-        email: '',
+        name: user?.name || '',
+        email: user?.email || '',
         phone: '',
         subject: '',
         message: ''
       });
+      if (user?.email) {
+        await loadContactMessages();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message. Please try again.');
     } finally {
@@ -83,18 +188,37 @@ export default function Contact() {
                 >
                   Contact
                 </Link>
-                <Link
-                  href="/login"
-                  className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/signup"
-                  className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
-                >
-                  Sign Up
-                </Link>
+                {user ? (
+                  <div className="flex items-center gap-3 rounded-full border border-white/70 px-3 py-2 text-white">
+                    <FaUserCircle className="text-2xl" />
+                    <div className="text-left leading-tight">
+                      <p className="text-sm font-semibold">{user.name || 'User'}</p>
+                      <p className="text-[11px] text-white/80 truncate max-w-36">{user.email}</p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="ml-1 rounded-full p-2 text-white hover:bg-white/10"
+                      title="Logout"
+                    >
+                      <FaSignOutAlt />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
+                    >
+                      Sign Up
+                    </Link>
+                  </>
+                )}
               </nav>
             </div>
           </header>
@@ -257,6 +381,109 @@ export default function Contact() {
 
             {/* Additional Information */}
             <div>
+              <div className="bg-white p-8 rounded-xl shadow-lg mb-8">
+                <div className="flex items-start justify-between gap-4 mb-6">
+                  <div>
+                    <h2 className="text-3xl font-bold text-gray-900" style={{fontFamily: 'var(--font-season)'}}>
+                      Your Messages
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {user?.email ? `Replies for ${messagesEmail || user.email}` : 'Sign in to view replies for your account.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => user?.email && loadContactMessages()}
+                    disabled={!user?.email || messagesLoading}
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-white disabled:opacity-60"
+                    style={{backgroundColor: '#755A7B'}}
+                    title="Refresh messages"
+                  >
+                    {messagesLoading ? <FaSyncAlt className="animate-spin" /> : <FaReply />}
+                  </button>
+                </div>
+
+                {!user?.email ? (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center">
+                    <FaUserCircle className="mx-auto mb-3 text-3xl" style={{color: '#A495A8'}} />
+                    <p className="font-medium text-gray-700">Please sign in</p>
+                    <p className="text-sm text-gray-500 mt-1">Admin replies are shown only for the logged-in user's email.</p>
+                  </div>
+                ) : messagesError ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {messagesError}
+                  </div>
+                ) : messagesLoading ? (
+                  <div className="py-8 text-center text-gray-500">Loading messages...</div>
+                ) : contactMessages.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center">
+                    <FaEnvelope className="mx-auto mb-3 text-3xl" style={{color: '#A495A8'}} />
+                    <p className="font-medium text-gray-700">No messages yet</p>
+                    <p className="text-sm text-gray-500 mt-1">When admin replies arrive, they will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[520px] overflow-y-auto pr-2">
+                    {contactMessages.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-gray-200 p-4">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{item.subject}</h3>
+                            <p className="text-xs text-gray-500">
+                              Sent {new Date(item.createdAt).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              item.status === 'replied'
+                                ? 'bg-green-100 text-green-700'
+                                : item.status === 'read'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-yellow-100 text-yellow-700'
+                            }`}
+                          >
+                            {item.status === 'replied' ? 'Replied' : item.status === 'read' ? 'Read' : 'Pending'}
+                          </span>
+                        </div>
+
+                        <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                          {item.message}
+                        </div>
+
+                        {item.adminReply ? (
+                          <div className="mt-3 rounded-lg p-4" style={{backgroundColor: 'rgba(117, 90, 123, 0.08)'}}>
+                            <div className="flex items-center gap-2 mb-2 text-sm font-semibold" style={{color: '#755A7B'}}>
+                              <FaReply />
+                              Admin Reply
+                            </div>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.adminReply}</p>
+                            {item.repliedAt && (
+                              <p className="text-xs text-gray-500 mt-3">
+                                Replied {new Date(item.repliedAt).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+                            <FaClock />
+                            Waiting for admin reply
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="bg-white p-8 rounded-xl shadow-lg mb-8">
                 <h2 className="text-3xl font-bold text-gray-900 mb-6" style={{fontFamily: 'var(--font-season)'}}>
                   Business Hours

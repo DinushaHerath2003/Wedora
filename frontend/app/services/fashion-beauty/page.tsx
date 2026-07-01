@@ -101,6 +101,8 @@ interface BudgetPackageDetail {
   image: string;
   vendorName: string;
   quantity?: number;
+  href?: string;
+  serviceSlug?: string;
 }
 
 interface BudgetItem {
@@ -401,6 +403,8 @@ export default function FashionBeautyServices() {
       image: pkg.image,
       vendorName: pkg.vendorName,
       quantity: 1,
+      href: `/services/fashion-beauty/${pkg.vendorId}`,
+      serviceSlug: 'fashion-beauty',
     });
     localStorage.setItem(budgetKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
 

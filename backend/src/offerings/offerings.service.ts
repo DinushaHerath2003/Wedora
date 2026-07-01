@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { ServiceOffering } from './entities/offering.entity';
 import { CreateOfferingDto, UpdateOfferingDto } from './dto/offering.dto';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -28,13 +28,21 @@ export class OfferingsService {
     return this.offeringRepository.save(offering);
   }
 
-  async findAll(): Promise<ServiceOffering[]> {
-    return this.offeringRepository.find({ relations: ['vendor'] });
+  async findAll(serviceType?: string): Promise<ServiceOffering[]> {
+    return this.offeringRepository.find({
+      where: serviceType ? { serviceType } : undefined,
+      relations: ['vendor'],
+    });
   }
 
-  async findByVendor(vendorId: number): Promise<ServiceOffering[]> {
+  async findByVendor(vendorId: number, serviceType?: string): Promise<ServiceOffering[]> {
+    const where: FindOptionsWhere<ServiceOffering> = { vendorId };
+    if (serviceType) {
+      where.serviceType = serviceType;
+    }
+
     return this.offeringRepository.find({
-      where: { vendorId },
+      where,
       relations: ['vendor'],
     });
   }

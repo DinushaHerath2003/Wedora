@@ -18,11 +18,11 @@ export class OfferingsController {
   }
 
   @Get()
-  findAll(@Query('vendorId') vendorId?: string) {
+  findAll(@Query('vendorId') vendorId?: string, @Query('serviceType') serviceType?: string) {
     if (vendorId) {
-      return this.offeringsService.findByVendor(+vendorId);
+      return this.offeringsService.findByVendor(+vendorId, serviceType);
     }
-    return this.offeringsService.findAll();
+    return this.offeringsService.findAll(serviceType);
   }
 
   @Get(':id')

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaTrash, FaMinus, FaPlus } from 'react-icons/fa';
 import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
-import { CartItem, getCartItems, saveCartItems } from '@/lib/cart-storage';
+import { CartItem, clearCartItems, getCartItems, saveCartItems } from '@/lib/cart-storage';
 
 interface BudgetCalculatorItem {
   id: string;
@@ -23,6 +23,7 @@ export default function Cart() {
   const [subtotal, setSubtotal] = useState(0);
   const [tax, setTax] = useState(0);
   const [total, setTotal] = useState(0);
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const calculateTotals = (items: CartItem[]) => {
     const sub = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -35,17 +36,10 @@ export default function Cart() {
   useEffect(() => {
     // Load user from localStorage
     const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Dinusha Herath',
-        email: 'DinushaHerath@gmail.com'
-      });
-    }
+    const userData = userStr ? JSON.parse(userStr) : null;
+    setUser(userData);
 
-    const items = getCartItems();
+    const items = getCartItems(userData);
     setCartItems(items);
     calculateTotals(items);
   }, []);
@@ -55,6 +49,8 @@ export default function Cart() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setUser(null);
+    window.dispatchEvent(new Event('auth-changed'));
     router.push('/');
   };
 
@@ -62,7 +58,7 @@ export default function Cart() {
     const updatedItems = cartItems.filter(item => item.id !== id);
     setCartItems(updatedItems);
     calculateTotals(updatedItems);
-    saveCartItems(updatedItems);
+    saveCartItems(updatedItems, user);
   };
 
   const handleUpdateQuantity = (id: string, newQuantity: number) => {
@@ -72,7 +68,7 @@ export default function Cart() {
     );
     setCartItems(updatedItems);
     calculateTotals(updatedItems);
-    saveCartItems(updatedItems);
+    saveCartItems(updatedItems, user);
   };
 
   const clearCart = () => {
@@ -81,7 +77,7 @@ export default function Cart() {
       setSubtotal(0);
       setTax(0);
       setTotal(0);
-      localStorage.removeItem('cartItems');
+      clearCartItems(user);
     }
   };
 
@@ -198,7 +194,7 @@ export default function Cart() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-white hover:bg-opacity-20 relative transition-colors" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                {cartItems.length}
+                {cartCount}
               </span>
             </Link>
 

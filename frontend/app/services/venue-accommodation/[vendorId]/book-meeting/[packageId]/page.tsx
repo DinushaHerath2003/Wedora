@@ -37,7 +37,7 @@ interface BookingItem {
 }
 
 interface VendorUser {
-  id?: string;
+  id?: string | number;
   name: string;
   email: string;
   phone?: string;
@@ -164,6 +164,13 @@ export default function BookMeetingPage() {
       return;
     }
 
+    const userId = typeof user?.id === 'string' || typeof user?.id === 'number' ? String(user.id) : '';
+
+    if (!userId) {
+      setToast({ message: 'Please log in before requesting a booking.', type: 'error' });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await apiFetch<any>('/bookings', {
@@ -171,7 +178,7 @@ export default function BookMeetingPage() {
         body: JSON.stringify({
           offeringId: packageData.id,
           vendorId: packageData.vendorId,
-          userId: user?.id,
+          userId,
           eventDate: selectedDate,
           eventTime: selectedTime,
           clientName: user?.name || 'Guest User',

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import Toast, { ToastProps } from '@/components/Toast';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
 
 type TransportCategory = 'wedding-cars' | 'luxury-vehicles' | 'guest-transport';
@@ -17,9 +19,11 @@ interface Package {
   duration?: string;
   discount?: string;
   discountType?: string;
+  isDraft?: boolean;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -30,80 +34,44 @@ export default function PostedPackagesPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
   const [activeCategory, setActiveCategory] = useState<TransportCategory>('wedding-cars');
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [toast, setToast] = useState<ToastProps | null>(null);
 
-  // Mock packages data
-  const mockPackages: Package[] = [
-    {
-      id: '1',
-      category: 'wedding-cars',
-      title: 'Luxury Wedding Car Package',
-      pricePerDay: 85000,
-      services: ['Wedding Car Rental', 'Decorated Vehicles', 'Chauffeur Service', 'Backup Vehicles'],
-      photos: ['/pack1.png'],
-      createdAt: new Date(),
-      duration: 'Full Day',
-      discount: '15%',
-      discountType: 'Early Bird'
-    },
-    {
-      id: '2',
-      category: 'wedding-cars',
-      title: 'Classic Car Experience',
-      pricePerDay: 65000,
-      services: ['Vintage Car', 'Chauffeur', 'Decorations'],
-      photos: ['/pack2.png'],
-      createdAt: new Date(),
-      duration: '8 hours',
-      discount: '10%',
-      discountType: 'Weekend Special'
-    },
-    {
-      id: '3',
-      category: 'luxury-vehicles',
-      title: 'Premium Luxury Fleet',
-      pricePerDay: 120000,
-      services: ['Luxury Sedan', 'Chauffeur Service', 'Multi-vehicle Fleet', 'Airport Transfer'],
-      photos: ['/pack3.png'],
-      createdAt: new Date(),
-      duration: 'Full Day'
-    },
-    {
-      id: '4',
-      category: 'luxury-vehicles',
-      title: 'Executive Transport',
-      pricePerDay: 95000,
-      services: ['Luxury Vehicle', 'Professional Driver', 'Premium Service'],
-      photos: ['/pack4.png'],
-      createdAt: new Date(),
-      duration: '10 hours',
-      discount: '12%',
-      discountType: 'Season Discount'
-    },
-    {
-      id: '5',
-      category: 'guest-transport',
-      title: 'Guest Shuttle Service',
-      pricePerDay: 45000,
-      services: ['Guest Shuttle', 'Multiple Trips', 'Professional Driver'],
-      photos: ['/pack5.png'],
-      createdAt: new Date(),
-      duration: '6-8 hours'
-    },
-    {
-      id: '6',
-      category: 'guest-transport',
-      title: 'Complete Guest Transport',
-      pricePerDay: 75000,
-      services: ['Shuttle Service', 'Airport Transfer', 'Hotel Pickup', 'Multiple Vehicles'],
-      photos: ['/pack6.png'],
-      createdAt: new Date(),
-      duration: 'Full Day',
-      discount: '18%',
-      discountType: 'Bulk Booking'
+  const organizationLabel = user?.organizationName || user?.name || 'Transportation Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
+
+  const normalizeTransportCategory = (category: string | undefined): TransportCategory => {
+    if (category === 'luxury-vehicles') return 'luxury-vehicles';
+    if (category === 'guest-transport') return 'guest-transport';
+    return 'wedding-cars';
+  };
+
+  const mapOfferingToPackage = (offering: any): Package => ({
+    id: offering.id.toString(),
+    category: normalizeTransportCategory(offering.category),
+    title: offering.name || '',
+    pricePerDay: Number(offering.price || 0),
+    services: Array.isArray(offering.facilities) ? offering.facilities : [],
+    photos: Array.isArray(offering.images) ? offering.images : [],
+    createdAt: new Date(offering.createdAt),
+    duration: offering.description || undefined,
+    discount: offering.discount,
+    discountType: offering.discountType,
+    isDraft: Boolean(offering.isDraft),
+  });
+
+  const fetchVendorPackages = async (vendorId: number) => {
+    try {
+      const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setPackages(offerings.filter((offering) => !offering.isDraft).map(mapOfferingToPackage));
+    } catch (error) {
+      console.error('Unable to load transportation posted packages', error);
+      setToast({
+        message: `Failed to load packages: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
     }
-  ];
-
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
+  };
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -133,19 +101,27 @@ export default function PostedPackagesPage() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Elite Transport'
-      });
+
+    if (!userStr) {
+      router.push('/login');
+      return;
     }
-  }, []);
+
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+    const vendorId = Number(userData.id);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
+    }
+
+    if (Number.isFinite(vendorId) && vendorId > 0) {
+      fetchVendorPackages(vendorId);
+    } else {
+      router.push('/login');
+    }
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -153,9 +129,26 @@ export default function PostedPackagesPage() {
     router.push('/');
   };
 
-  const handleDeletePackage = (id: string) => {
-    if (confirm('Are you sure you want to delete this package?')) {
+  const handleDeletePackage = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this package?')) {
+      return;
+    }
+
+    try {
+      await apiFetch(`/offerings/${id}`, {
+        method: 'DELETE',
+      });
       setPackages(packages.filter(pkg => pkg.id !== id));
+      setToast({
+        message: 'Package deleted successfully.',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Unable to delete transportation package', error);
+      setToast({
+        message: `Failed to delete package: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error',
+      });
     }
   };
 
@@ -163,16 +156,23 @@ export default function PostedPackagesPage() {
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row" style={{backgroundColor: '#f5f5f7'}}>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
       {/* Sidebar Navigation */}
       <aside className="w-full md:w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              ET
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Elite Transport</h2>
-              <p className="text-xs text-gray-500">Premium Transportation Services</p>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
+              <p className="text-xs text-gray-500">transportation services</p>
             </div>
           </div>
         </div>
@@ -198,6 +198,7 @@ export default function PostedPackagesPage() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/transportation/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -212,7 +213,7 @@ export default function PostedPackagesPage() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -222,10 +223,10 @@ export default function PostedPackagesPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -317,7 +318,7 @@ export default function PostedPackagesPage() {
                 {/* Package Image */}
                 <div className="relative h-48 bg-gray-200">
                   <img 
-                    src={pkg.photos[0]} 
+                    src={pkg.photos[0] || '/car.png'} 
                     alt={pkg.title}
                     className="w-full h-full object-cover"
                   />
@@ -373,6 +374,7 @@ export default function PostedPackagesPage() {
                   {/* Action Buttons */}
                   <div className="flex gap-2">
                     <button 
+                      onClick={() => router.push(`/dashboard/transportation?edit=${pkg.id}`)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all"
                       style={{backgroundColor: '#755A7B'}}
                     >

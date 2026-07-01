@@ -97,7 +97,7 @@ export default function PostedPackagesPage() {
     try {
       const offerings = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
       setPackages(
-        offerings.map((offering) => ({
+        offerings.filter((offering) => !offering.isDraft).map((offering) => ({
           id: offering.id.toString(),
           category: normalizeCakeCategory(offering.category),
           title: offering.name,
@@ -142,11 +142,11 @@ export default function PostedPackagesPage() {
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              SC
+              {(user?.organizationName || user?.name || 'Cake Vendor').charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Sweet Celebrations</h2>
-              <p className="text-xs text-gray-500">Artisan Cake Decoration</p>
+              <h2 className="font-bold text-gray-800">{user?.organizationName || user?.name || 'Cake Vendor'}</h2>
+              <p className="text-xs text-gray-500">cake decoration</p>
             </div>
           </div>
         </div>
@@ -172,6 +172,7 @@ export default function PostedPackagesPage() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/cake-decoration/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -186,7 +187,7 @@ export default function PostedPackagesPage() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/cake-decoration/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -196,10 +197,10 @@ export default function PostedPackagesPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/cake-decoration/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/cake-decoration/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 

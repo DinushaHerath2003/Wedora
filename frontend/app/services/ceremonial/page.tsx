@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaStar, FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 import { apiFetch } from '@/lib/api';
+import { getCartCount } from '@/lib/cart-storage';
 import {
   CeremonialCategory,
   CEREMONIAL_CATEGORY_LABELS,
@@ -40,20 +41,14 @@ export default function CeremonialServices() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [servicesList, setServicesList] = useState<string[]>([]);
+  const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
     // Load user from localStorage
     const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      // Demo user
-      setUser({
-        name: 'Dinusha Herath',
-        email: 'DinushaHerath@gmail.com'
-      });
-    }
+    const userData = userStr ? JSON.parse(userStr) : null;
+    setUser(userData);
+    setCartCount(getCartCount(userData));
     fetchCeremonialOfferings();
   }, []);
 
@@ -256,7 +251,7 @@ export default function CeremonialServices() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-purple-700 relative" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 

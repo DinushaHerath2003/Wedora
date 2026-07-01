@@ -1,6 +1,49 @@
+'use client';
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { FaSignOutAlt, FaUserCircle } from "react-icons/fa";
+
+type NavUser = {
+  name?: string;
+  email?: string;
+};
 
 export default function AboutUs() {
+  const [user, setUser] = useState<NavUser | null>(null);
+
+  const loadUser = () => {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
+      setUser(null);
+      return;
+    }
+
+    try {
+      setUser(JSON.parse(userStr));
+    } catch {
+      setUser(null);
+    }
+  };
+
+  useEffect(() => {
+    loadUser();
+    window.addEventListener('auth-changed', loadUser);
+    window.addEventListener('storage', loadUser);
+
+    return () => {
+      window.removeEventListener('auth-changed', loadUser);
+      window.removeEventListener('storage', loadUser);
+    };
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    window.dispatchEvent(new Event('auth-changed'));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section with Background Image */}
@@ -41,18 +84,37 @@ export default function AboutUs() {
                 >
                   Contact
                 </Link>
-                <Link
-                  href="/login"
-                  className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/signup"
-                  className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
-                >
-                  Sign Up
-                </Link>
+                {user ? (
+                  <div className="flex items-center gap-3 rounded-full border border-white/70 px-3 py-2 text-white">
+                    <FaUserCircle className="text-2xl" />
+                    <div className="text-left leading-tight">
+                      <p className="text-sm font-semibold">{user.name || 'User'}</p>
+                      <p className="text-[11px] text-white/80 truncate max-w-36">{user.email}</p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="ml-1 rounded-full p-2 text-white hover:bg-white/10"
+                      title="Logout"
+                    >
+                      <FaSignOutAlt />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className="px-4 py-2 text-white rounded-md font-medium border-2 border-white transition-all hover:bg-white hover:text-black"
+                    >
+                      Sign Up
+                    </Link>
+                  </>
+                )}
               </nav>
             </div>
           </header>

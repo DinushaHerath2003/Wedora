@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaEdit } from "react-icons/fa";
+import { useCartCount } from "@/lib/use-cart-count";
 
 type HomeUser = {
   id?: string;
@@ -19,6 +20,7 @@ export default function Home() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', email: '' });
+  const cartCount = useCartCount(user);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -43,6 +45,7 @@ export default function Home() {
 
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
+    window.dispatchEvent(new Event('auth-changed'));
     setShowProfileEditor(false);
   };
 
@@ -50,6 +53,7 @@ export default function Home() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
+    window.dispatchEvent(new Event('auth-changed'));
     setShowProfileMenu(false);
   };
 
@@ -195,7 +199,7 @@ export default function Home() {
               >
                 <FaShoppingCart className="text-xl" />
                 <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  0
+                  {cartCount}
                 </span>
               </Link>
               {user ? (

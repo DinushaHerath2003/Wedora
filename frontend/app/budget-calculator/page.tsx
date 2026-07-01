@@ -5,13 +5,18 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaShoppingCart, FaCalculator, FaChevronDown, FaUserCircle, FaSignOutAlt, FaTrash } from 'react-icons/fa';
 import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
+import { useCartCount } from '@/lib/use-cart-count';
 
 interface BudgetItem {
   id: string;
+  packageId?: string;
+  vendorId?: string;
   category: string;
   name: string;
   price: number;
   quantity: number;
+  image?: string;
+  href?: string;
 }
 
 export default function BudgetCalculator() {
@@ -20,18 +25,12 @@ export default function BudgetCalculator() {
   const [user, setUser] = useState<{id?: string | number; name: string; email: string; role?: string} | null>(null);
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
   const [totalBudget, setTotalBudget] = useState(0);
+  const cartCount = useCartCount(user);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Dinusha Herath',
-        email: 'DinushaHerath@gmail.com'
-      });
-    }
+    const userData = userStr ? JSON.parse(userStr) : null;
+    setUser(userData);
   }, []);
 
   useEffect(() => {
@@ -39,21 +38,59 @@ export default function BudgetCalculator() {
     const scopedBudgetItems = safeParseArray<any>(localStorage.getItem(storageKeys.budgetItems));
     const scopedPackageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
 
+    const getPackageId = (item: any, index: number) => String(item.packageId || item.id?.toString().replace(/^pkg-/, '') || index);
+    const detailByPackageId = new Map(
+      scopedPackageDetails.map((item, index) => [getPackageId(item, index), item]),
+    );
+
+    const getServiceHref = (item: any) => {
+      if (item.href) return item.href;
+      if (!item.vendorId) return '';
+
+      const category = String(item.category || '').toLowerCase();
+      const serviceSlug =
+        item.serviceSlug ||
+        (['hotel-rooms', 'banquet-halls', 'outdoor-venues'].includes(category) ? 'venue-accommodation' : '') ||
+        (category.includes('photo') || category.includes('video') ? 'photography-videography' : '') ||
+        (category.includes('fashion') || category.includes('beauty') || category.includes('salon') ? 'fashion-beauty' : '') ||
+        (category.includes('transport') || category.includes('car') || category.includes('vehicle') ? 'transportation' : '') ||
+        (category.includes('ceremon') || category.includes('poruwa') || category.includes('religious') ? 'ceremonial' : '') ||
+        (category.includes('cake') || category.includes('decor') ? 'cake-decoration' : '') ||
+        (category.includes('gift') || category.includes('souvenir') || category.includes('favor') ? 'gifting-souvenirs' : '') ||
+        (category.includes('entertain') || category.includes('music') || category.includes('dj') || category.includes('band') ? 'entertainment' : '');
+
+      return serviceSlug ? `/services/${serviceSlug}/${item.vendorId}` : '';
+    };
+
     const normalizedFromPackages = scopedPackageDetails.map((item, index) => ({
-      id: `pkg-${item.packageId || item.id || index}`,
+      id: `pkg-${getPackageId(item, index)}`,
+      packageId: getPackageId(item, index),
+      vendorId: item.vendorId ? String(item.vendorId) : undefined,
       category: item.category || item.vendorName || 'Added Package',
       name: item.title || item.name || 'Wedding Package',
       price: Number(item.price) || 0,
       quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+      image: item.image || '/ven1.png',
+      href: getServiceHref(item),
     }));
 
-    const normalizedFromBudgetItems = scopedBudgetItems.map((item, index) => ({
-      id: item.id || `item-${item.packageId || index}`,
-      category: item.category || 'Budget Item',
-      name: item.name || item.title || 'Budget Item',
-      price: Number(item.price) || 0,
-      quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-    }));
+    const normalizedFromBudgetItems = scopedBudgetItems.map((item, index) => {
+      const packageId = getPackageId(item, index);
+      const detail = detailByPackageId.get(packageId) || {};
+      const merged = { ...detail, ...item, packageId };
+
+      return {
+        id: item.id || `pkg-${packageId}`,
+        packageId,
+        vendorId: merged.vendorId ? String(merged.vendorId) : undefined,
+        category: merged.category || 'Budget Item',
+        name: merged.name || merged.title || 'Budget Item',
+        price: Number(merged.price) || 0,
+        quantity: Number(merged.quantity) > 0 ? Number(merged.quantity) : 1,
+        image: merged.image || '/ven1.png',
+        href: getServiceHref(merged),
+      };
+    });
 
     const primaryItems = normalizedFromBudgetItems.length > 0
       ? normalizedFromBudgetItems
@@ -64,6 +101,8 @@ export default function BudgetCalculator() {
       if (existing) {
         existing.quantity += item.quantity;
         existing.price = item.price || existing.price;
+        existing.image = existing.image || item.image;
+        existing.href = existing.href || item.href;
       } else {
         acc.push(item);
       }
@@ -93,15 +132,31 @@ export default function BudgetCalculator() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setUser(null);
+    window.dispatchEvent(new Event('auth-changed'));
     router.push('/');
   };
 
   const handleRemoveItem = (id: string) => {
     const updatedItems = budgetItems.filter(item => item.id !== id);
+    const removedItem = budgetItems.find(item => item.id === id);
     setBudgetItems(updatedItems);
     calculateTotal(updatedItems);
     const storageKeys = getScopedBudgetItems();
     localStorage.setItem(storageKeys.budgetItems, JSON.stringify(updatedItems));
+    if (removedItem?.packageId) {
+      const packageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
+      localStorage.setItem(
+        storageKeys.budgetPackageDetails,
+        JSON.stringify(packageDetails.filter((item) => String(item.packageId || item.id) !== removedItem.packageId)),
+      );
+
+      const packageIds = safeParseArray<string>(localStorage.getItem(storageKeys.budgetPackages));
+      localStorage.setItem(
+        storageKeys.budgetPackages,
+        JSON.stringify(packageIds.filter((packageId) => String(packageId) !== removedItem.packageId)),
+      );
+    }
   };
 
   const handleUpdateQuantity = (id: string, newQuantity: number) => {
@@ -113,6 +168,18 @@ export default function BudgetCalculator() {
     calculateTotal(updatedItems);
     const storageKeys = getScopedBudgetItems();
     localStorage.setItem(storageKeys.budgetItems, JSON.stringify(updatedItems));
+    const updatedItem = updatedItems.find((item) => item.id === id);
+    if (updatedItem?.packageId) {
+      const packageDetails = safeParseArray<any>(localStorage.getItem(storageKeys.budgetPackageDetails));
+      localStorage.setItem(
+        storageKeys.budgetPackageDetails,
+        JSON.stringify(packageDetails.map((item) => (
+          String(item.packageId || item.id) === updatedItem.packageId
+            ? { ...item, quantity: newQuantity }
+            : item
+        ))),
+      );
+    }
   };
 
   const clearAllItems = () => {
@@ -223,7 +290,7 @@ export default function BudgetCalculator() {
             <Link href="/cart" className="p-2 rounded-full hover:bg-white hover:bg-opacity-20 relative transition-colors" title="Cart">
               <FaShoppingCart className="text-xl text-white" />
               <span className="absolute -top-1 -right-1 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" style={{backgroundColor: '#ff4444'}}>
-                0
+                {cartCount}
               </span>
             </Link>
 
@@ -306,7 +373,7 @@ export default function BudgetCalculator() {
                           <div key={item.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
                             <div className="relative h-32">
                               <img
-                                src="/ven1.png"
+                                src={item.image || '/ven1.png'}
                                 alt={item.name}
                                 className="w-full h-full object-cover"
                               />
@@ -320,7 +387,7 @@ export default function BudgetCalculator() {
                             <div className="p-4">
                               <h4 className="font-semibold text-gray-800 mb-2">{item.name}</h4>
                               <p className="text-sm text-gray-500 mb-3">Rs {item.price.toLocaleString()} × {item.quantity}</p>
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
@@ -344,6 +411,15 @@ export default function BudgetCalculator() {
                                   </p>
                                 </div>
                               </div>
+                              {item.href && (
+                                <Link
+                                  href={item.href}
+                                  className="mt-4 block w-full rounded-lg px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:opacity-90"
+                                  style={{ backgroundColor: '#755A7B' }}
+                                >
+                                  See more
+                                </Link>
+                              )}
                             </div>
                           </div>
                         ))}

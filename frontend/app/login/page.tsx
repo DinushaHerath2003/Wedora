@@ -68,6 +68,7 @@ export default function LoginPage() {
 
         localStorage.setItem('token', vendorResponse.accessToken);
         localStorage.setItem('user', JSON.stringify(vendorResponse.user));
+        window.dispatchEvent(new Event('auth-changed'));
         router.push(getVendorDashboardPath(vendorResponse.user.categories));
         return;
       } catch {
@@ -78,6 +79,7 @@ export default function LoginPage() {
 
         localStorage.setItem('token', userResponse.accessToken);
         localStorage.setItem('user', JSON.stringify(userResponse.user));
+        window.dispatchEvent(new Event('auth-changed'));
 
         switch (userResponse.user.role) {
           case 'user':

@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { getBudgetStorageKeys, safeParseArray } from '@/lib/budget-storage';
-import { addCartItem, getCartCount } from '@/lib/cart-storage';
+import { addCartItem } from '@/lib/cart-storage';
+import { useCartCount } from '@/lib/use-cart-count';
 import Toast, { ToastProps } from '@/components/Toast';
 import { FaHeart, FaShoppingCart, FaCalculator, FaMapMarkerAlt, FaStar, FaCheck, FaArrowLeft, FaBookmark, FaRegBookmark, FaChevronDown, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
@@ -38,8 +39,6 @@ interface Vendor {
   organizationName: string;
   category: VenueCategory[];
   location: string;
-  rating: number;
-  reviewCount: number;
   image: string;
   about: string;
   facilities: string[];
@@ -63,14 +62,21 @@ interface BudgetPackageDetail {
   image: string;
   vendorName: string;
   quantity?: number;
+  href?: string;
+  serviceSlug?: string;
 }
 
 interface BudgetItem {
   id: string;
+  packageId?: string;
+  vendorId?: string;
   category: string;
   name: string;
   price: number;
   quantity: number;
+  image?: string;
+  href?: string;
+  serviceSlug?: string;
 }
 
 interface CustomerUser {
@@ -123,7 +129,7 @@ export default function VendorDetailPage() {
   const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [user, setUser] = useState<CustomerUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [cartCount, setCartCount] = useState(0);
+  const cartCount = useCartCount(user);
   const [toast, setToast] = useState<ToastProps | null>(null);
   const [reviewsByPackage, setReviewsByPackage] = useState<Record<string, PackageReview[]>>({});
   const [reviewForms, setReviewForms] = useState<Record<string, { rating: number; comment: string }>>({});
@@ -137,8 +143,6 @@ export default function VendorDetailPage() {
     organizationName: 'Cinderella Hotel',
     category: ['hotel-rooms', 'banquet-halls'],
     location: 'Colombo, Sri Lanka',
-    rating: 4.8,
-    reviewCount: 124,
     image: '/ven1.png',
     about: 'Cinderella Hotel offers premium wedding venues and accommodation services. With over 10 years of experience, we specialize in creating magical moments for your special day.',
     facilities: ['WiFi', 'AC', 'Parking', 'Catering', 'Stage', 'Sound System']
@@ -217,15 +221,7 @@ export default function VendorDetailPage() {
     if (userStr) {
       const userData = JSON.parse(userStr) as CustomerUser;
       setUser(userData);
-    } else {
-      // Demo user
-      setUser({
-        name: 'Demo User',
-        email: 'demo@wedora.com'
-      });
     }
-
-    setCartCount(getCartCount());
   }, []);
 
   const getUserBudgetKeys = () => getBudgetStorageKeys(user);
@@ -277,8 +273,6 @@ export default function VendorDetailPage() {
             organizationName: vendorData?.organizationName || 'Venue',
             category: Array.from(categories),
             location: vendorData?.location || 'Not specified',
-            rating: 4.6,
-            reviewCount: Math.floor(Math.random() * 200) + 50,
             image: '/ven1.png',
             about: `Premium venue and accommodation services in ${vendorData?.location || 'Sri Lanka'}. We specialize in creating exceptional wedding experiences.`,
             facilities: Array.from(allFacilities).length > 0 ? Array.from(allFacilities) : ['WiFi', 'AC', 'Parking', 'Catering']
@@ -330,6 +324,8 @@ export default function VendorDetailPage() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setUser(null);
+    window.dispatchEvent(new Event('auth-changed'));
     router.push('/');
   };
 
@@ -370,10 +366,15 @@ export default function VendorDetailPage() {
       const canonicalBudgetItems = safeParseArray<BudgetItem>(localStorage.getItem(budgetKeys.budgetItems));
       canonicalBudgetItems.push({
         id: `pkg-${pkg.id}`,
+        packageId: pkg.id,
+        vendorId: vendor.id,
         category: pkg.category,
         name: `${vendor.organizationName} - ${pkg.title}`,
         price: pkg.pricePerDay,
         quantity: 1,
+        image: pkg.photos[0],
+        href: `/services/venue-accommodation/${vendor.id}`,
+        serviceSlug: 'venue-accommodation',
       });
       localStorage.setItem(budgetKeys.budgetItems, JSON.stringify(canonicalBudgetItems));
 
@@ -388,6 +389,8 @@ export default function VendorDetailPage() {
         image: pkg.photos[0],
         vendorName: vendor.organizationName,
         quantity: 1,
+        href: `/services/venue-accommodation/${vendor.id}`,
+        serviceSlug: 'venue-accommodation',
       });
       localStorage.setItem(budgetKeys.budgetPackageDetails, JSON.stringify(budgetPackageDetails));
 
@@ -399,7 +402,7 @@ export default function VendorDetailPage() {
 
   const handleAddToCart = (pkg: Package, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updatedCart = addCartItem({
+    addCartItem({
       id: `venue-${vendor.id}-${pkg.id}`,
       vendorId: vendor.id,
       vendorName: vendor.organizationName,
@@ -410,7 +413,6 @@ export default function VendorDetailPage() {
       image: pkg.photos[0],
     });
 
-    setCartCount(updatedCart.reduce((sum, item) => sum + item.quantity, 0));
     alert(`${pkg.title} added to cart!`);
   };
 
@@ -654,14 +656,6 @@ export default function VendorDetailPage() {
               <div className="flex items-center gap-2 mb-3">
                 <FaMapMarkerAlt className="text-gray-400" />
                 <span className="text-gray-600">{vendor.location}</span>
-              </div>
-
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex items-center gap-1">
-                  <FaStar style={{color: '#FFD700'}} />
-                  <span className="font-semibold text-gray-800 text-lg">{vendor.rating}</span>
-                </div>
-                <span className="text-gray-500">({vendor.reviewCount} reviews)</span>
               </div>
 
               <p className="text-gray-600 mb-4">{vendor.about}</p>

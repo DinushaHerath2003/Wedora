@@ -10,30 +10,63 @@ export interface CartItem {
   image?: string;
 }
 
-const CART_STORAGE_KEY = 'cartItems';
+export type CartUser = {
+  id?: string | number;
+  email?: string;
+};
 
-export function getCartItems(): CartItem[] {
-  if (typeof window === 'undefined') return [];
+export function getStoredCartUser(): CartUser | null {
+  if (typeof window === 'undefined') return null;
 
   try {
-    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
-    const parsed = savedCart ? JSON.parse(savedCart) : [];
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getCartScope(user: CartUser | null = getStoredCartUser()) {
+  if (!user) return 'guest';
+  const scopeId = user.id ?? user.email?.trim().toLowerCase();
+  return scopeId ? `user:${scopeId}` : 'guest';
+}
+
+export function getCartStorageKey(user: CartUser | null = getStoredCartUser()) {
+  return `${getCartScope(user)}:cartItems`;
+}
+
+function parseCartItems(value: string | null): CartItem[] {
+  try {
+    const parsed = value ? JSON.parse(value) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-export function saveCartItems(items: CartItem[]) {
-  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+export function getCartItems(user: CartUser | null = getStoredCartUser()): CartItem[] {
+  if (typeof window === 'undefined') return [];
+
+  return parseCartItems(localStorage.getItem(getCartStorageKey(user)));
 }
 
-export function getCartCount() {
-  return getCartItems().reduce((sum, item) => sum + item.quantity, 0);
+export function saveCartItems(items: CartItem[], user: CartUser | null = getStoredCartUser()) {
+  localStorage.setItem(getCartStorageKey(user), JSON.stringify(items));
+  window.dispatchEvent(new Event('cart-updated'));
 }
 
-export function addCartItem(item: Omit<CartItem, 'quantity'>) {
-  const items = getCartItems();
+export function clearCartItems(user: CartUser | null = getStoredCartUser()) {
+  localStorage.removeItem(getCartStorageKey(user));
+  window.dispatchEvent(new Event('cart-updated'));
+}
+
+export function getCartCount(user: CartUser | null = getStoredCartUser()) {
+  return getCartItems(user).reduce((sum, item) => sum + item.quantity, 0);
+}
+
+export function addCartItem(item: Omit<CartItem, 'quantity'>, user: CartUser | null = getStoredCartUser()) {
+  const items = getCartItems(user);
   const existingIndex = items.findIndex((cartItem) => cartItem.id === item.id);
 
   if (existingIndex >= 0) {
@@ -45,6 +78,6 @@ export function addCartItem(item: Omit<CartItem, 'quantity'>) {
     items.push({ ...item, quantity: 1 });
   }
 
-  saveCartItems(items);
+  saveCartItems(items, user);
   return items;
 }

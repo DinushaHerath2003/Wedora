@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { uploadImageToCloudinary } from '@/lib/cloudinary';
 import Toast, { ToastProps } from '@/components/Toast';
-import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaUpload, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaHome } from 'react-icons/fa';
+import { FaHeart, FaBell, FaEdit, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus } from 'react-icons/fa';
 
 type CakeCategory = 'wedding-cakes' | 'tiered-cakes' | 'custom-designs';
 
@@ -51,6 +51,30 @@ export default function CakeDecorationDashboard() {
     discountType: '',
     photos: [] as string[],
   });
+
+  const organizationLabel = user?.organizationName || user?.name || 'Cake Decoration Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
+  const cakePackageTypes = [
+    'Classic Wedding Cake',
+    'Two-Tier Cake',
+    'Three-Tier Cake',
+    'Luxury Custom Cake',
+    'Dessert Table Package',
+  ];
+  const cakeServices = [
+    'Custom Cake Design',
+    'Fondant Decoration',
+    'Buttercream Finish',
+    'Sugar Flowers',
+    'Cake Topper',
+    'Cake Tasting',
+    'Delivery & Setup',
+    'Cupcakes & Mini Desserts',
+    'Eggless Option',
+    'Dessert Table Styling',
+    'Fresh Flower Placement',
+    'Anniversary Tier',
+  ];
 
   const getCategoryBannerText = () => {
     switch(activeCategory) {
@@ -313,11 +337,11 @@ export default function CakeDecorationDashboard() {
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              SC
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Sweet Celebrations</h2>
-              <p className="text-xs text-gray-500">Artisan Cake Decoration</p>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
+              <p className="text-xs text-gray-500">wedding cake decoration</p>
             </div>
           </div>
         </div>
@@ -458,11 +482,12 @@ export default function CakeDecorationDashboard() {
 
           {/* Package Type Selection */}
           <div className="bg-white rounded-lg shadow p-4 md:p-6 mb-6">
-            <h3 className="text-sm font-semibold text-gray-500 mb-4">SELECT PACKAGE TYPE</h3>
+            <h3 className="text-sm font-semibold text-gray-500 mb-4">SELECT CAKE PACKAGE TYPE</h3>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {['Basic Package', 'Standard Package', 'Premium Package', 'Luxury Package', 'Custom Package'].map((type) => (
+              {cakePackageTypes.map((type) => (
                 <button
                   key={type}
+                  type="button"
                   onClick={() => selectPackageType(type)}
                   className="p-4 border-2 rounded-lg text-center transition-all hover:shadow-lg"
                   style={{
@@ -480,20 +505,12 @@ export default function CakeDecorationDashboard() {
 
           {/* Services Selection */}
           <div className="bg-white rounded-lg shadow p-4 md:p-6 mb-6">
-            <h3 className="text-sm font-semibold text-gray-500 mb-4">SERVICES INCLUDED</h3>
+            <h3 className="text-sm font-semibold text-gray-500 mb-4">CAKE SERVICES INCLUDED</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                'Live Band Performance',
-                'DJ Services',
-                'Sound System',
-                'Lighting Setup',
-                'Traditional Dancers',
-                'MC Services',
-                'Stage Setup',
-                'Backup Equipment'
-              ].map((service) => (
+              {cakeServices.map((service) => (
                 <button
                   key={service}
+                  type="button"
                   onClick={() => toggleService(service)}
                   className="p-3 border-2 rounded-lg text-sm transition-all hover:shadow-md"
                   style={{
@@ -510,56 +527,57 @@ export default function CakeDecorationDashboard() {
           </div>
 
           {/* Package Form */}
-          <form onSubmit={(event) => handleSubmitPackage(event, false)} className="bg-white rounded-lg shadow p-4 md:p-6">
+          <form onSubmit={(event) => handleSubmitPackage(event, false)} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-8 bg-white rounded-lg shadow p-4 md:p-6">
             <h3 className="text-lg font-bold mb-6" style={{color: '#755A7B'}}>Package Details</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Service Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Cake Package Name *</label>
                 <input
                   type="text"
                   required
                   value={newPackage.title}
                   onChange={(e) => setNewPackage({...newPackage, title: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., Complete Wedding Entertainment"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
+                  placeholder="e.g., Elegant Three-Tier Wedding Cake"
                   style={{borderColor: '#e5e7eb'}}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Price (Rs.) *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Cake Price (Rs.) *</label>
                 <input
                   type="number"
                   required
                   value={newPackage.pricePerDay}
                   onChange={(e) => setNewPackage({...newPackage, pricePerDay: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Enter price"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
+                  placeholder="Enter total package price"
                   style={{borderColor: '#e5e7eb'}}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Service Duration</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Serving Size / Lead Time</label>
                 <input
                   type="text"
                   value={newPackage.duration}
                   onChange={(e) => setNewPackage({...newPackage, duration: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., 4-5 hours"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
+                  placeholder="e.g., Serves 120 guests, 2 weeks notice"
                   style={{borderColor: '#e5e7eb'}}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Services (comma-separated)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Extra Cake Details</label>
                 <input
                   type="text"
                   value={newPackage.services}
                   onChange={(e) => setNewPackage({...newPackage, services: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="e.g., DJ, Sound, Lighting"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
+                  placeholder="e.g., vanilla sponge, gold leaf, fresh roses"
                   style={{borderColor: '#e5e7eb'}}
                 />
               </div>
@@ -570,7 +588,7 @@ export default function CakeDecorationDashboard() {
                   type="number"
                   value={newPackage.discount}
                   onChange={(e) => setNewPackage({...newPackage, discount: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium placeholder-gray-400"
                   placeholder="Enter discount percentage"
                   style={{borderColor: '#e5e7eb'}}
                 />
@@ -581,55 +599,90 @@ export default function CakeDecorationDashboard() {
                 <select
                   value={newPackage.discountType}
                   onChange={(e) => setNewPackage({...newPackage, discountType: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white text-gray-900 font-medium"
                   style={{borderColor: '#e5e7eb'}}
                 >
                   <option value="">Select type</option>
                   <option value="seasonal">Seasonal</option>
                   <option value="early-bird">Early Bird</option>
-                  <option value="bulk">Bulk Booking</option>
+                  <option value="dessert-table">Dessert Table Bundle</option>
+                  <option value="tasting-offer">Tasting Offer</option>
                 </select>
               </div>
             </div>
 
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload Photos</label>
-              <div className="border-2 border-dashed rounded-lg p-8 text-center" style={{borderColor: '#755A7B'}}>
-                <FaUpload className="mx-auto text-4xl mb-3" style={{color: '#755A7B'}} />
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handlePhotoChange}
-                  className="hidden"
-                  id="photo-upload"
-                />
-                <label htmlFor="photo-upload" className="cursor-pointer text-gray-600 hover:text-purple-600">
-                  Click to upload or drag and drop
-                  <p className="text-sm text-gray-500 mt-1">PNG, JPG, GIF up to 10MB</p>
-                </label>
-                {newPackage.photos.length > 0 && (
-                  <p className="mt-2 text-sm" style={{color: '#755A7B'}}>
-                    {newPackage.photos.length} file(s) selected
-                  </p>
-                )}
-              </div>
             </div>
 
-            <div className="mt-8 flex gap-4">
+            <div className="lg:col-span-4 space-y-6">
+              <div className="bg-white rounded-xl shadow-sm p-4 md:p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Upload Img</h3>
+                <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 md:p-6 mb-4">
+                  <div className="aspect-square bg-gray-50 rounded-lg mb-4 overflow-hidden">
+                    {newPackage.photos.length > 0 ? (
+                      <img
+                        src={newPackage.photos[0]}
+                        alt="Main cake"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-24 md:w-32 h-24 md:h-32 bg-purple-100 rounded-lg"></div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[0, 1, 2].map((idx) => (
+                      <div key={idx} className="aspect-square bg-purple-100 rounded-lg overflow-hidden">
+                        {newPackage.photos[idx + 1] && (
+                          <img
+                            src={newPackage.photos[idx + 1]}
+                            alt={`Cake thumbnail ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('photo-upload')?.click()}
+                      disabled={uploadingImages}
+                      className="aspect-square bg-purple-100 rounded-lg flex items-center justify-center text-2xl"
+                      style={{color: '#755A7B'}}
+                    >
+                      {uploadingImages ? '...' : '+'}
+                    </button>
+                  </div>
+
+                  {uploadingImages && (
+                    <p className="mt-3 text-sm text-gray-500">Uploading images to Cloudinary...</p>
+                  )}
+
+                  <input
+                    id="photo-upload"
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handlePhotoChange}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+            <div className="flex flex-col gap-3">
               <button
                 type="button"
                 onClick={(event) => handleSubmitPackage(event as unknown as React.FormEvent, true)}
                 disabled={uploadingImages}
-                className="flex-1 py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all disabled:opacity-60"
-                style={{backgroundColor: '#755A7B'}}
+                className="w-full py-3 px-6 rounded-lg border-2 font-medium hover:bg-gray-50 transition-all disabled:opacity-60"
+                style={{borderColor: '#755A7B', color: '#755A7B'}}
               >
-                {editingPackageId ? 'Update Draft' : 'Save Draft'}
+                <FaFileInvoice className="inline mr-2" /> {editingPackageId ? 'Update Draft' : 'Save Draft'}
               </button>
               <button
                 type="submit"
                 disabled={uploadingImages}
-                className="flex-1 py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all"
+                className="w-full py-3 px-6 rounded-lg text-white font-medium hover:opacity-90 transition-all"
                 style={{backgroundColor: '#755A7B'}}
               >
                 {editingPackageId ? 'Update Package' : 'Post Package'}
@@ -637,11 +690,12 @@ export default function CakeDecorationDashboard() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="px-8 py-3 border-2 rounded-lg font-medium hover:bg-gray-50 transition-all"
+                className="w-full py-3 border-2 rounded-lg font-medium hover:bg-gray-50 transition-all"
                 style={{borderColor: '#755A7B', color: '#755A7B'}}
               >
                 Reset
               </button>
+            </div>
             </div>
           </form>
         </main>

@@ -18,7 +18,7 @@ interface UserRecord {
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRole, setFilterRole] = useState<'all' | 'user' | 'vendor' | 'admin'>('all');
+  const [filterRole, setFilterRole] = useState<'all' | 'user' | 'vendor'>('all');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -30,7 +30,7 @@ export default function AdminUsersPage() {
     try {
       setLoading(true);
       const data = await apiFetch<UserRecord[]>('/admin/users', { token: getAdminToken() });
-      setUsers(data);
+      setUsers(data.filter((user) => user.role !== 'admin'));
       setError('');
     } catch (err) {
       setError(getAdminApiErrorMessage(err));
@@ -49,7 +49,7 @@ export default function AdminUsersPage() {
       displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = filterRole === 'all' || user.role === filterRole;
-    return matchesSearch && matchesRole;
+    return user.role !== 'admin' && matchesSearch && matchesRole;
   });
 
   const handleToggleActive = async (user: UserRecord) => {
@@ -138,7 +138,7 @@ export default function AdminUsersPage() {
 
                 {showFilterDropdown && (
                   <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-10">
-                    {(['all', 'user', 'vendor', 'admin'] as const).map((role) => (
+                    {(['all', 'user', 'vendor'] as const).map((role) => (
                       <button
                         key={role}
                         onClick={() => { setFilterRole(role); setShowFilterDropdown(false); }}
@@ -296,7 +296,7 @@ export default function AdminUsersPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
                   <option value="user">User</option>
-                  <option value="admin">Admin</option>
+                  <option value="vendor">Vendor</option>
                 </select>
               </div>
             </div>

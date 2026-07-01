@@ -11,6 +11,10 @@ export class CreateOfferingDto {
   @IsString()
   category!: string;
 
+  @IsOptional()
+  @IsString()
+  serviceType?: string;
+
   @IsNumber()
   price!: number;
 
@@ -58,6 +62,10 @@ export class UpdateOfferingDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsString()
+  serviceType?: string;
 
   @IsOptional()
   @IsNumber()

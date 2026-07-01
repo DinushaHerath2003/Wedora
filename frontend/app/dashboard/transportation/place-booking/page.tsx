@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 import { FaHeart, FaBell, FaEdit, FaTrash, FaCalendarAlt, FaEye, FaChartBar, FaFileInvoice, FaCog, FaMoon, FaPlus, FaTimes, FaSave } from 'react-icons/fa';
 
 type TransportCategory = 'wedding-cars' | 'luxury-vehicles' | 'guest-transport';
@@ -13,11 +14,12 @@ interface Booking {
   clientEmail: string;
   clientPhone: string;
   description: string;
-  category: string;
+  category: TransportCategory;
   time: string;
 }
 
 interface VendorUser {
+  id?: number | string;
   name: string;
   email: string;
   role: string;
@@ -27,9 +29,12 @@ interface VendorUser {
 export default function PlaceBookingPage() {
   const router = useRouter();
   const [user, setUser] = useState<VendorUser | null>(null);
+  const organizationLabel = user?.organizationName || user?.name || 'Transportation Vendor';
+  const organizationInitial = organizationLabel.charAt(0).toUpperCase();
   const [activeCategory, setActiveCategory] = useState<TransportCategory>('wedding-cars');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [offerings, setOfferings] = useState<{ id: number; category: string }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -40,6 +45,16 @@ export default function PlaceBookingPage() {
     description: '',
     time: '10:00'
   });
+  const [bookingError, setBookingError] = useState('');
+  const [apiError, setApiError] = useState('');
+
+  const normalizeTransportCategory = (category: string | undefined): TransportCategory => {
+    if (category === 'luxury-vehicles') return 'luxury-vehicles';
+    if (category === 'guest-transport') return 'guest-transport';
+    return 'wedding-cars';
+  };
+
+  const getPackageCategory = (category: TransportCategory) => category;
 
   const getCategoryBannerImage = () => {
     switch(activeCategory) {
@@ -69,25 +84,64 @@ export default function PlaceBookingPage() {
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
-    
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-    } else {
-      setUser({
-        name: 'Demo Vendor',
-        email: 'demo@wedora.com',
-        role: 'vendor',
-        organizationName: 'Elite Transport'
-      });
+
+    if (!userStr) {
+      router.push('/login');
+      return;
     }
 
-    // Load bookings from localStorage
-    const savedBookings = localStorage.getItem('transportationBookings');
-    if (savedBookings) {
-      setBookings(JSON.parse(savedBookings));
+    const userData = JSON.parse(userStr) as VendorUser;
+    setUser(userData);
+    const vendorId = Number(userData.id);
+
+    if (userData.role !== 'vendor') {
+      router.push('/');
+      return;
     }
-  }, []);
+
+    if (Number.isFinite(vendorId) && vendorId > 0) {
+      fetchVendorBookings(vendorId);
+      fetchVendorOfferings(vendorId);
+    } else {
+      router.push('/login');
+    }
+  }, [router]);
+
+  const fetchVendorBookings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/bookings?vendorId=${vendorId}`);
+      setBookings(
+        data.map((booking) => ({
+          id: booking.id.toString(),
+          date: booking.eventDate ? booking.eventDate.slice(0, 10) : '',
+          time: booking.eventTime || '10:00',
+          clientName: booking.clientName || booking.user?.name || 'Guest',
+          clientEmail: booking.clientEmail || booking.user?.email || '',
+          clientPhone: booking.clientPhone || '',
+          description: booking.notes || '',
+          category: normalizeTransportCategory(booking.offering?.category),
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to load transportation bookings', error);
+      setApiError('Unable to load bookings from backend.');
+    }
+  };
+
+  const fetchVendorOfferings = async (vendorId: number) => {
+    try {
+      const data = await apiFetch<any[]>(`/offerings?vendorId=${vendorId}`);
+      setOfferings(
+        data.map((offering) => ({
+          id: offering.id,
+          category: offering.category,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to load transportation offerings', error);
+      setApiError('Unable to load packages for booking.');
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -129,6 +183,7 @@ export default function PlaceBookingPage() {
     setSelectedDate(dateStr);
     setShowBookingModal(true);
     setEditingBooking(null);
+    setBookingError('');
     setNewBooking({
       clientName: '',
       clientEmail: '',
@@ -138,11 +193,53 @@ export default function PlaceBookingPage() {
     });
   };
 
-  const handleSaveBooking = () => {
+  const handleSaveBooking = async () => {
     if (!selectedDate) return;
 
+    const duplicateSlot = bookings.some(booking =>
+      booking.date === selectedDate &&
+      booking.category === activeCategory &&
+      booking.time === newBooking.time &&
+      (!editingBooking || booking.id !== editingBooking.id)
+    );
+
+    if (duplicateSlot) {
+      setBookingError('This time slot is already booked for the selected date. Please choose another time.');
+      return;
+    }
+
+    const vendorId = Number((user as any)?.id);
+    const selectedOffering =
+      offerings.find((offering) => normalizeTransportCategory(offering.category) === activeCategory) ||
+      offerings[0];
+
+    if (!user || !Number.isFinite(vendorId) || vendorId <= 0) {
+      setBookingError('Unable to save booking: invalid vendor session.');
+      return;
+    }
+
+    if (!selectedOffering) {
+      setBookingError('No transportation package was found. Please add a package first.');
+      return;
+    }
+
+    const payload = {
+      offeringId: selectedOffering.id,
+      vendorId,
+      eventDate: selectedDate,
+      eventTime: newBooking.time,
+      clientName: newBooking.clientName,
+      clientEmail: newBooking.clientEmail,
+      clientPhone: newBooking.clientPhone,
+      notes: newBooking.description,
+    };
+
+    try {
     if (editingBooking) {
-      // Update existing booking
+      await apiFetch<any>(`/bookings/${editingBooking.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
       const updatedBookings = bookings.map(booking =>
         booking.id === editingBooking.id
           ? {
@@ -156,11 +253,13 @@ export default function PlaceBookingPage() {
           : booking
       );
       setBookings(updatedBookings);
-      localStorage.setItem('entertainmentBookings', JSON.stringify(updatedBookings));
     } else {
-      // Create new booking
+      const createdBooking = await apiFetch<any>('/bookings', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
       const booking: Booking = {
-        id: Date.now().toString(),
+        id: createdBooking.id.toString(),
         date: selectedDate,
         clientName: newBooking.clientName,
         clientEmail: newBooking.clientEmail,
@@ -170,12 +269,11 @@ export default function PlaceBookingPage() {
         time: newBooking.time
       };
 
-      const updatedBookings = [...bookings, booking];
-      setBookings(updatedBookings);
-      localStorage.setItem('entertainmentBookings', JSON.stringify(updatedBookings));
+      setBookings((prev) => [...prev, booking]);
     }
 
     setShowBookingModal(false);
+    setEditingBooking(null);
     setNewBooking({
       clientName: '',
       clientEmail: '',
@@ -183,10 +281,16 @@ export default function PlaceBookingPage() {
       description: '',
       time: '10:00'
     });
+    setBookingError('');
+    } catch (error) {
+      console.error('Failed to save transportation booking', error);
+      setBookingError('Unable to save booking. Please try again later.');
+    }
   };
 
   const handleEditBooking = (booking: Booking) => {
     setEditingBooking(booking);
+    setBookingError('');
     setNewBooking({
       clientName: booking.clientName,
       clientEmail: booking.clientEmail,
@@ -196,12 +300,20 @@ export default function PlaceBookingPage() {
     });
   };
 
-  const handleDeleteBooking = (id: string) => {
-    if (confirm('Are you sure you want to delete this booking?')) {
-      const updatedBookings = bookings.filter(booking => booking.id !== id);
-      setBookings(updatedBookings);
-      localStorage.setItem('entertainmentBookings', JSON.stringify(updatedBookings));
+  const handleDeleteBooking = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this booking?')) {
+      return;
     }
+
+    try {
+      await apiFetch<any>(`/bookings/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Failed to delete transportation booking', error);
+    }
+
+    setBookings(bookings.filter(booking => booking.id !== id));
   };
 
   const nextMonth = () => {
@@ -222,11 +334,11 @@ export default function PlaceBookingPage() {
         <div className="p-6 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: '#755A7B'}}>
-              ET
+              {organizationInitial}
             </div>
             <div>
-              <h2 className="font-bold text-gray-800">Elite Transport</h2>
-              <p className="text-xs text-gray-500">Premium Transportation Services</p>
+              <h2 className="font-bold text-gray-800">{organizationLabel}</h2>
+              <p className="text-xs text-gray-500">transportation services</p>
             </div>
           </div>
         </div>
@@ -252,6 +364,7 @@ export default function PlaceBookingPage() {
               <FaFileInvoice /> Posted Packages
             </button>
             <button 
+              onClick={() => router.push('/dashboard/transportation/draft-packages')}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors text-gray-600 hover:bg-gray-100"
             >
               <FaEdit /> Draft Package
@@ -266,7 +379,7 @@ export default function PlaceBookingPage() {
             >
               <FaCalendarAlt /> Place a Booking
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/accept-booking')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaEye /> Accept Booking
             </button>
           </div>
@@ -276,10 +389,10 @@ export default function PlaceBookingPage() {
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaBell /> Notifications
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/feedback')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaHeart /> Feedback
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
+            <button onClick={() => router.push('/dashboard/transportation/settings')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg mb-1 text-gray-600 hover:bg-gray-100">
               <FaCog /> Setting
             </button>
             <button 
@@ -363,6 +476,12 @@ export default function PlaceBookingPage() {
             <span>/</span>
             <span className="font-semibold" style={{color: '#755A7B'}}>place a booking</span>
           </div>
+
+          {apiError && (
+            <div className="max-w-4xl mx-auto mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {apiError}
+            </div>
+          )}
 
           {/* Calendar */}
           <div className="bg-white rounded-xl shadow-md p-4 mb-6 max-w-4xl mx-auto">
@@ -614,6 +733,11 @@ export default function PlaceBookingPage() {
               )}
 
               <div className="space-y-4">
+                {bookingError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {bookingError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Client Name</label>
                   <input

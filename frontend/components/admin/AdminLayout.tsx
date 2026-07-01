@@ -11,6 +11,7 @@ import {
   FaHome,
   FaEnvelope,
   FaSignOutAlt,
+  FaUserShield,
 } from 'react-icons/fa';
 import { getAdminToken } from '@/lib/admin-api';
 
@@ -30,6 +31,7 @@ interface AdminLayoutProps {
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: FaHome },
   { href: '/admin/users', label: 'User Management', icon: FaUsers },
+  { href: '/admin/admins', label: 'Admin Management', icon: FaUserShield },
   { href: '/admin/vendors', label: 'Vendor Management', icon: FaUserTie },
   { href: '/admin/messages', label: 'Contact Messages', icon: FaEnvelope },
 ];
@@ -138,8 +140,8 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
         </nav>
       </aside>
 
-      <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
-        <header className="shadow-sm sticky top-0 z-30" style={{ backgroundColor: '#755A7B' }}>
+      <main className={`flex-1 min-h-screen flex flex-col transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
+        <header className="shadow-sm sticky top-0 z-50 shrink-0" style={{ backgroundColor: '#755A7B' }}>
           <div className="px-6 py-4 flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-white">
@@ -172,7 +174,7 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
           </div>
         </header>
 
-        <div className="p-6">{children}</div>
+        <div className="p-6 flex-1">{children}</div>
 
         <footer style={{ backgroundColor: '#755A7B' }}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

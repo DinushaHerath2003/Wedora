@@ -25,6 +25,9 @@ export class ServiceOffering {
   @Column()
   category!: string;
 
+  @Column({ nullable: true })
+  serviceType!: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   price!: number;
 
